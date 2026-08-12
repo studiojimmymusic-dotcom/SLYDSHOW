@@ -226,9 +226,25 @@ function buildCopy(source: SlideshowCandidate, layouts: SlideLayout[]): SlideCop
 }
 
 export function appendFelarCta(caption: string): string {
-  const cleaned = caption.trim();
-  if (/usefelar\.com/i.test(cleaned)) return cleaned;
-  return `${cleaned}\n\nStart selling beats on FELAR → usefelar.com`.trim();
+  const CTA_LINE = 'Start selling beats on FELAR → usefelar.com';
+  let text = String(caption || '').trim();
+
+  // Remove an existing CTA so we can place it before hashtags
+  text = text
+    .replace(/\n*Start selling beats on FELAR\s*→\s*usefelar\.com\n*/gi, '\n')
+    .trim();
+
+  const tags = text.match(/#[A-Za-z0-9_]+/g) || [];
+  const uniqueTags = [...new Set(tags)];
+  const body = text
+    .replace(/#[A-Za-z0-9_]+/g, ' ')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+
+  return [body, CTA_LINE, uniqueTags.length ? uniqueTags.join(' ') : '']
+    .filter(Boolean)
+    .join('\n\n');
 }
 
 export async function remakeFromTikTokUrl(sourceUrl: string): Promise<string> {
