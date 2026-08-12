@@ -76,12 +76,13 @@
   },
   "overlays": {
     "enabled": true,
-    "fontPath": "fonts/Montserrat-Bold.ttf",
+    "fontPath": "fonts/TikTokSans-Bold.ttf",
+    "bodyFontPath": "fonts/TikTokSans-Medium.ttf",
     "fontColor": "#FFFFFF",
     "strokeColor": "#000000",
-    "strokeWidthPercent": 0.3,
-    "textPositionFromTop": 0.2,
-    "maxWidthPercent": 0.84,
+    "strokeWidthPercent": 0.14,
+    "textPositionFromTop": 0.12,
+    "maxWidthPercent": 0.88,
     "outputWidth": 1024,
     "outputHeight": 1536
   },

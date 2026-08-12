@@ -16,6 +16,35 @@ import {
 
 type LoadedFont = opentype.Font;
 
+const TIKTOK_WHITE = '#FFFFFF';
+const TIKTOK_BLACK = '#000000';
+const HEAD_PAD_X = 0.34;
+const HEAD_PAD_Y = 0.18;
+const HEAD_LINE_GAP = 0.28;
+const HEAD_BODY_GAP = 0.038;
+const BODY_LINE_HEIGHT = 1.34;
+
+function loadFontFile(fontPath: string): LoadedFont {
+  if (!fs.existsSync(fontPath)) {
+    throw new Error(`Font not found at ${fontPath}`);
+  }
+  const fontBuffer = fs.readFileSync(fontPath);
+  return opentype.parse(
+    fontBuffer.buffer.slice(fontBuffer.byteOffset, fontBuffer.byteOffset + fontBuffer.byteLength)
+  );
+}
+
+function fontMetrics(font: LoadedFont, fontSize: number) {
+  const scale = fontSize / font.unitsPerEm;
+  const ascender = font.ascender * scale;
+  const descender = font.descender * scale;
+  return {
+    ascender,
+    descender,
+    height: ascender - descender,
+  };
+}
+
 function wrapByWidth(font: LoadedFont, text: string, fontSize: number, maxWidth: number): string[] {
   const raw = text.replace(/\r/g, '').trim();
   if (!raw) return [];
@@ -88,16 +117,22 @@ function parseLayout(raw: string, layout?: SlideLayout): SlideLayout {
   return { body: raw.trim() };
 }
 
-function centeredPath(font: LoadedFont, text: string, x: number, y: number, fontSize: number): string {
+function centeredPath(font: LoadedFont, text: string, x: number, baselineY: number, fontSize: number): string {
   const width = font.getAdvanceWidth(text, fontSize);
-  const glyphPath = font.getPath(text, x - width / 2, y, fontSize);
+  const glyphPath = font.getPath(text, x - width / 2, baselineY, fontSize);
   return glyphPath.toPathData(2);
+}
+
+function bodyStrokeWidth(fontSize: number, config: OverlayConfig): number {
+  const pct = config.strokeWidthPercent > 0 ? config.strokeWidthPercent : 0.14;
+  return Math.max(10, Math.min(22, Math.round(fontSize * pct)));
 }
 
 function buildOverlaySvg(
   layout: SlideLayout,
   config: OverlayConfig,
-  font: LoadedFont,
+  headFont: LoadedFont,
+  bodyFont: LoadedFont,
   style?: Partial<SlideTextStyle>
 ): string {
   const width = config.outputWidth;
@@ -106,67 +141,106 @@ function buildOverlaySvg(
   const headline = layout.headline || '';
   const wordCount = body.replace(/\n/g, ' ').split(/\s+/).filter(Boolean).length;
 
-  let bodySizePercent = style?.bodySizePercent ?? 0.05;
+  let bodySizePercent = style?.bodySizePercent ?? 0.051;
   if (style?.bodySizePercent == null) {
-    if (wordCount <= 6) bodySizePercent = 0.068;
-    else if (wordCount <= 14) bodySizePercent = 0.058;
+    if (wordCount <= 6) bodySizePercent = 0.058;
+    else if (wordCount <= 14) bodySizePercent = 0.054;
   }
 
   const bodySize = Math.round(width * bodySizePercent);
-  const headSize = Math.round(width * (style?.headSizePercent ?? 0.046));
-  const strokeWidth = Math.max(14, Math.round(bodySize * Math.max(config.strokeWidthPercent, 0.28)));
-  const bodyLineHeight = bodySize * 1.28;
-  const headLineHeight = headSize * 1.7;
+  const headSize = Math.round(width * (style?.headSizePercent ?? 0.043));
+  const strokeWidth = bodyStrokeWidth(bodySize, config);
+  const bodyLineHeight = bodySize * BODY_LINE_HEIGHT;
   const maxWidthPercent = style?.maxWidthPercent ?? config.maxWidthPercent;
   const bodyMaxWidth = width * maxWidthPercent;
-  const headMaxWidth = width * Math.min(0.92, maxWidthPercent);
+  const headMaxWidth = width * Math.min(0.9, maxWidthPercent);
   const positionFromTop = style?.textPositionFromTop ?? config.textPositionFromTop;
   const showHeadlineBox = style?.showHeadlineBox !== false;
 
-  const bodyLines = wrapByWidth(font, body, bodySize, bodyMaxWidth);
-  const headLines = headline ? wrapByWidth(font, headline.toUpperCase(), headSize, headMaxWidth) : [];
-
-  const headlineTop = Math.round(height * Math.min(positionFromTop, 0.35));
-  const bodyTop = headLines.length
-    ? headlineTop + headLines.length * headLineHeight + Math.round(height * 0.04)
-    : Math.round(height * positionFromTop);
+  const bodyLines = wrapByWidth(bodyFont, body, bodySize, bodyMaxWidth);
+  const headLines = headline ? wrapByWidth(headFont, headline.toUpperCase(), headSize, headMaxWidth) : [];
 
   const x = width / 2;
   const parts: string[] = [];
+  let blockTop = Math.round(height * Math.min(positionFromTop, 0.42));
+
+  const headMetrics = fontMetrics(headFont, headSize);
+  const headPadX = headSize * HEAD_PAD_X;
+  const headPadY = headSize * HEAD_PAD_Y;
+  const pillGap = headSize * HEAD_LINE_GAP;
 
   headLines.forEach((line, i) => {
-    const y = headlineTop + i * headLineHeight;
+    const textW = headFont.getAdvanceWidth(line, headSize);
+    const boxW = Math.min(width * 0.92, textW + headPadX * 2);
+    const boxH = headMetrics.height + headPadY * 2;
+    const boxX = x - boxW / 2;
+    const boxY = blockTop;
+    const baselineY = boxY + headPadY + headMetrics.ascender;
+
     if (showHeadlineBox) {
-      const textW = font.getAdvanceWidth(line, headSize);
-      const padX = headSize * 0.42;
-      const boxH = headSize * 1.48;
-      const boxW = Math.min(width * 0.92, textW + padX * 2);
-      const boxX = x - boxW / 2;
-      const boxY = y - headSize * 1.08;
       parts.push(
-        `<rect x="${boxX.toFixed(1)}" y="${boxY.toFixed(1)}" width="${boxW.toFixed(1)}" height="${boxH.toFixed(1)}" rx="${boxH / 2}" ry="${boxH / 2}" fill="#FFFFFF"/>`
+        `<rect x="${boxX.toFixed(1)}" y="${boxY.toFixed(1)}" width="${boxW.toFixed(1)}" height="${boxH.toFixed(1)}" rx="${(boxH / 2).toFixed(1)}" ry="${(boxH / 2).toFixed(1)}" fill="${TIKTOK_WHITE}"/>`
       );
-      parts.push(`<path d="${centeredPath(font, line, x, y, headSize)}" fill="#111111"/>`);
+      parts.push(`<path d="${centeredPath(headFont, line, x, baselineY, headSize)}" fill="${TIKTOK_BLACK}"/>`);
     } else {
-      const d = centeredPath(font, line, x, y, headSize);
+      const d = centeredPath(headFont, line, x, baselineY, headSize);
       parts.push(
-        `<path d="${d}" fill="${config.fontColor}" stroke="${config.strokeColor}" stroke-width="${strokeWidth}" stroke-linejoin="round" stroke-linecap="round" paint-order="stroke fill"/>`
+        `<path d="${d}" fill="${TIKTOK_WHITE}" stroke="${TIKTOK_BLACK}" stroke-width="${strokeWidth}" stroke-linejoin="round" stroke-linecap="round" paint-order="stroke fill"/>`
       );
     }
+
+    blockTop += boxH + (i < headLines.length - 1 ? pillGap : 0);
   });
 
-  bodyLines.forEach((line, i) => {
-    const y = bodyTop + i * bodyLineHeight;
-    const d = centeredPath(font, line, x, y, bodySize);
-    parts.push(
-      `<path d="${d}" fill="${config.fontColor}" stroke="${config.strokeColor}" stroke-width="${strokeWidth}" stroke-linejoin="round" stroke-linecap="round" paint-order="stroke fill"/>`
-    );
-  });
+  if (bodyLines.length) {
+    if (headLines.length) {
+      blockTop += Math.round(height * HEAD_BODY_GAP);
+    }
+    const bodyMetrics = fontMetrics(bodyFont, bodySize);
+    let bodyBaseline = blockTop + bodyMetrics.ascender;
+
+    bodyLines.forEach((line, i) => {
+      const d = centeredPath(bodyFont, line, x, bodyBaseline, bodySize);
+      parts.push(
+        `<path d="${d}" fill="${TIKTOK_WHITE}" stroke="${TIKTOK_BLACK}" stroke-width="${strokeWidth}" stroke-linejoin="round" stroke-linecap="round" paint-order="stroke fill"/>`
+      );
+      bodyBaseline += bodyLineHeight;
+      if (i < bodyLines.length - 1) {
+        bodyBaseline += bodySize * 0.02;
+      }
+    });
+  }
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">
   ${parts.join('\n  ')}
 </svg>`;
+}
+
+function overlayFonts(config: OverlayConfig): { headFont: LoadedFont; bodyFont: LoadedFont } {
+  const headPath = resolvePath(config.fontPath);
+  const bodyPath = resolvePath(config.bodyFontPath || config.fontPath);
+  return {
+    headFont: loadFontFile(headPath),
+    bodyFont: loadFontFile(bodyPath),
+  };
+}
+
+export async function renderOverlayToBuffer(
+  imageInput: string | Buffer,
+  layout: SlideLayout,
+  style?: Partial<SlideTextStyle>
+): Promise<Buffer> {
+  const config = loadConfig().overlays;
+  const { headFont, bodyFont } = overlayFonts(config);
+  const svg = buildOverlaySvg(layout, config, headFont, bodyFont, style);
+
+  return sharp(imageInput)
+    .rotate()
+    .resize(config.outputWidth, config.outputHeight, { fit: 'cover', position: 'centre' })
+    .composite([{ input: Buffer.from(svg), top: 0, left: 0 }])
+    .jpeg({ quality: 92 })
+    .toBuffer();
 }
 
 export async function renderOverlayToFile(
@@ -175,29 +249,9 @@ export async function renderOverlayToFile(
   outputPath: string,
   style?: Partial<SlideTextStyle>
 ): Promise<void> {
-  const config = loadConfig().overlays;
-  const fontPath = resolvePath(config.fontPath);
-  if (!fs.existsSync(fontPath)) {
-    throw new Error(`Font not found at ${fontPath}. Expected Montserrat font in fonts/`);
-  }
-
-  const fontBuffer = fs.readFileSync(fontPath);
-  const font = opentype.parse(
-    fontBuffer.buffer.slice(fontBuffer.byteOffset, fontBuffer.byteOffset + fontBuffer.byteLength)
-  );
-  const svg = buildOverlaySvg(layout, config, font, style);
-
+  const buffer = await renderOverlayToBuffer(imageInput, layout, style);
   ensureDir(path.dirname(outputPath));
-  const pipeline = sharp(imageInput)
-    .rotate()
-    .resize(config.outputWidth, config.outputHeight, { fit: 'cover', position: 'centre' })
-    .composite([{ input: Buffer.from(svg), top: 0, left: 0 }]);
-
-  if (outputPath.toLowerCase().endsWith('.png')) {
-    await pipeline.png().toFile(outputPath);
-  } else {
-    await pipeline.jpeg({ quality: 92 }).toFile(outputPath);
-  }
+  fs.writeFileSync(outputPath, buffer);
 }
 
 export async function addOverlay(
@@ -255,11 +309,11 @@ async function runTest(): Promise<void> {
     },
     {
       name: 'slide-2',
-      text: "|||HEAD|||Study songs you love.|||BODY|||Don't just listen, analyze\nthe drums, arrangement\nmelodies, transitions, and\nsound selection.",
+      text: "|||HEAD|||1. STUDY SONGS YOU LOVE.|||BODY|||Don't just listen, analyze the drums, arrangement melodies, transitions, and sound selection.",
     },
     {
       name: 'slide-3',
-      text: '|||HEAD|||Make your drums hit\nbefore you mix.|||BODY|||Better sound selection\nand better patterns will\ntake you further than\nendless EQ.',
+      text: '|||HEAD|||Make your drums hit\nbefore you mix.|||BODY|||Better sound selection and better patterns will take you further than endless EQ.',
     },
     {
       name: 'slide-6',

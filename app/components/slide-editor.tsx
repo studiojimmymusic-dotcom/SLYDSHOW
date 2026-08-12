@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button, fieldClassName } from './ui';
 import type { EditorSlideCopy, EditorSlideStyle } from '../lib/slide-style';
 
@@ -15,112 +15,18 @@ function proxied(url: string): string {
   return `/api/image?url=${encodeURIComponent(url)}`;
 }
 
-function OverlayLayer({
-  copy,
-  style,
-  onStyleChange,
-}: {
-  copy: EditorSlideCopy;
-  style: EditorSlideStyle;
-  onStyleChange: (next: EditorSlideStyle) => void;
-}) {
-  const frameRef = useRef<HTMLDivElement>(null);
-  const dragging = useRef(false);
-  const styleRef = useRef(style);
-  styleRef.current = style;
-  const [width, setWidth] = useState(320);
-
-  useEffect(() => {
-    const el = frameRef.current;
-    if (!el) return;
-    const sync = () => setWidth(el.clientWidth || 320);
-    sync();
-    const ro = new ResizeObserver(sync);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-
-  useEffect(() => {
-    function onMove(e: PointerEvent) {
-      if (!dragging.current || !frameRef.current) return;
-      const rect = frameRef.current.getBoundingClientRect();
-      const y = (e.clientY - rect.top) / rect.height;
-      onStyleChange({
-        ...styleRef.current,
-        textPositionFromTop: Math.min(0.72, Math.max(0.04, y)),
-      });
+function imagePayloadForPreview(src: string): { imageUrl?: string; imageDataUrl?: string } {
+  if (src.startsWith('data:')) return { imageDataUrl: src };
+  if (src.startsWith('/api/image?')) {
+    try {
+      const q = new URL(src, 'http://local').searchParams.get('url');
+      if (q) return { imageUrl: q };
+    } catch {
+      // fall through
     }
-    function onUp() {
-      dragging.current = false;
-    }
-    window.addEventListener('pointermove', onMove);
-    window.addEventListener('pointerup', onUp);
-    return () => {
-      window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerup', onUp);
-    };
-  }, [onStyleChange]);
-
-  const headline = copy.headline.trim();
-  const body = copy.body.trim();
-  const headPx = Math.max(12, width * style.headSizePercent);
-  const bodyPx = Math.max(12, width * style.bodySizePercent);
-
-  return (
-    <div ref={frameRef} className="absolute inset-0 select-none">
-      <div
-        className="absolute z-10 flex cursor-grab flex-col items-center active:cursor-grabbing"
-        style={{
-          top: `${style.textPositionFromTop * 100}%`,
-          width: `${style.maxWidthPercent * 100}%`,
-          left: `${((1 - style.maxWidthPercent) / 2) * 100}%`,
-        }}
-        onPointerDown={(e) => {
-          e.preventDefault();
-          dragging.current = true;
-        }}
-      >
-        {headline ? (
-          style.showHeadlineBox ? (
-            <span
-              className="mb-3 inline-block max-w-full rounded-full bg-white px-[0.7em] py-[0.28em] text-center font-bold uppercase leading-tight tracking-wide text-[#111]"
-              style={{
-                fontFamily: 'var(--font-slide-overlay), sans-serif',
-                fontSize: `${headPx}px`,
-              }}
-            >
-              {headline}
-            </span>
-          ) : (
-            <p
-              className="mb-3 text-center font-bold uppercase leading-tight tracking-wide text-white"
-              style={{
-                fontFamily: 'var(--font-slide-overlay), sans-serif',
-                fontSize: `${headPx}px`,
-                textShadow:
-                  '0 0 2px #000, 0 0 4px #000, 1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000',
-              }}
-            >
-              {headline}
-            </p>
-          )
-        ) : null}
-        {body ? (
-          <p
-            className="whitespace-pre-wrap text-center font-bold leading-[1.28] text-white"
-            style={{
-              fontFamily: 'var(--font-slide-overlay), sans-serif',
-              fontSize: `${bodyPx}px`,
-              textShadow:
-                '0 0 3px #000, 0 0 6px #000, 2px 2px 0 #000, -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000',
-            }}
-          >
-            {body}
-          </p>
-        ) : null}
-      </div>
-    </div>
-  );
+  }
+  if (src.startsWith('http')) return { imageUrl: src };
+  return { imageUrl: src };
 }
 
 export function SlideEditor({
@@ -155,6 +61,72 @@ export function SlideEditor({
   const active = Math.min(Math.max(0, activeIndex), Math.max(0, previews.length - 1));
   const copy = copies[active] || { headline: '', body: '' };
   const style = styles[active];
+  const previewSrc = previews[active]?.src || '';
+
+  const [renderedPreview, setRenderedPreview] = useState('');
+  const [previewBusy, setPreviewBusy] = useState(false);
+  const dragRef = useRef(false);
+  const frameRef = useRef<HTMLDivElement>(null);
+  const styleRef = useRef(style);
+  styleRef.current = style;
+
+  const refreshPreview = useCallback(async () => {
+    if (!previewSrc || !style) return;
+    setPreviewBusy(true);
+    try {
+      const imagePayload = imagePayloadForPreview(
+        previewSrc.startsWith('data:') ? previewSrc : proxied(previewSrc)
+      );
+      const res = await fetch('/api/preview-overlay', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...imagePayload,
+          headline: copy.headline,
+          body: copy.body,
+          style,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Preview failed');
+      setRenderedPreview(String(data.previewDataUrl || ''));
+    } catch {
+      setRenderedPreview('');
+    } finally {
+      setPreviewBusy(false);
+    }
+  }, [previewSrc, copy.headline, copy.body, style]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void refreshPreview();
+    }, 280);
+    return () => window.clearTimeout(timer);
+  }, [refreshPreview]);
+
+  useEffect(() => {
+    function onMove(e: PointerEvent) {
+      if (!dragRef.current || !frameRef.current) return;
+      const rect = frameRef.current.getBoundingClientRect();
+      const y = (e.clientY - rect.top) / rect.height;
+      onStyleChange(active, {
+        ...styleRef.current,
+        textPositionFromTop: Math.min(0.55, Math.max(0.04, y)),
+      });
+    }
+    function onUp() {
+      if (dragRef.current) {
+        dragRef.current = false;
+        void refreshPreview();
+      }
+    }
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    };
+  }, [active, onStyleChange, refreshPreview]);
 
   return (
     <div className="space-y-5">
@@ -164,7 +136,7 @@ export function SlideEditor({
             Editor
           </h1>
           <p className="mt-1 text-[14px] text-text-secondary">
-            Drag text to move it. Tune size and width, then Share to burn it onto the photos.
+            TikTok-style preview — drag text up or down, then Share to burn it onto the photos.
           </p>
         </div>
         <div className="flex gap-2">
@@ -197,22 +169,39 @@ export function SlideEditor({
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,340px)_1fr]">
         <section className="rounded-xl border border-border bg-background p-4 shadow-[0_1px_2px_rgba(20,19,17,0.03)]">
-          <div className="relative mx-auto aspect-[9/16] w-full max-w-[320px] overflow-hidden rounded-[18px] bg-black">
-            <img
-              src={proxied(previews[active]?.src || '')}
-              alt=""
-              className="absolute inset-0 h-full w-full object-cover"
-            />
-            {style ? (
-              <OverlayLayer
-                copy={copy}
-                style={style}
-                onStyleChange={(next) => onStyleChange(active, next)}
+          <div
+            ref={frameRef}
+            className="relative mx-auto aspect-[9/16] w-full max-w-[320px] cursor-grab overflow-hidden rounded-[18px] bg-black active:cursor-grabbing"
+            onPointerDown={(e) => {
+              e.preventDefault();
+              dragRef.current = true;
+            }}
+          >
+            {renderedPreview ? (
+              <img
+                src={renderedPreview}
+                alt=""
+                className="h-full w-full object-cover"
+                draggable={false}
               />
+            ) : (
+              <img
+                src={proxied(previewSrc)}
+                alt=""
+                className="h-full w-full object-cover opacity-60"
+                draggable={false}
+              />
+            )}
+            {previewBusy ? (
+              <div className="absolute inset-0 grid place-items-center bg-black/20">
+                <span className="rounded-full bg-black/50 px-3 py-1 text-[11px] text-white">
+                  Updating…
+                </span>
+              </div>
             ) : null}
           </div>
           <p className="mt-3 text-center text-[12px] text-text-tertiary">
-            Drag the text block up or down
+            Drag on the preview to move text (TikTok Sans, same as final export)
           </p>
         </section>
 
@@ -225,7 +214,7 @@ export function SlideEditor({
               value={copy.headline}
               onChange={(e) => onCopyChange(active, { ...copy, headline: e.target.value })}
               className={fieldClassName}
-              placeholder="Headline (optional)"
+              placeholder="e.g. 1. STUDY SONGS YOU LOVE."
             />
           </div>
           <div>
@@ -247,7 +236,7 @@ export function SlideEditor({
                 <input
                   type="range"
                   min={4}
-                  max={72}
+                  max={55}
                   value={Math.round(style.textPositionFromTop * 100)}
                   onChange={(e) =>
                     onStyleChange(active, {
@@ -262,8 +251,8 @@ export function SlideEditor({
                 Text width
                 <input
                   type="range"
-                  min={50}
-                  max={95}
+                  min={60}
+                  max={92}
                   value={Math.round(style.maxWidthPercent * 100)}
                   onChange={(e) =>
                     onStyleChange(active, {
@@ -278,8 +267,8 @@ export function SlideEditor({
                 Body size
                 <input
                   type="range"
-                  min={35}
-                  max={90}
+                  min={42}
+                  max={68}
                   value={Math.round(style.bodySizePercent * 1000)}
                   onChange={(e) =>
                     onStyleChange(active, {
@@ -294,8 +283,8 @@ export function SlideEditor({
                 Title size
                 <input
                   type="range"
-                  min={30}
-                  max={70}
+                  min={36}
+                  max={52}
                   value={Math.round(style.headSizePercent * 1000)}
                   onChange={(e) =>
                     onStyleChange(active, {
@@ -321,7 +310,7 @@ export function SlideEditor({
                 })
               }
             />
-            White pill behind title
+            White pill behind title (TikTok default)
           </label>
 
           <div>

@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { Fraunces, JetBrains_Mono } from 'next/font/google';
+import { Fraunces, JetBrains_Mono, TikTok_Sans } from 'next/font/google';
 import localFont from 'next/font/local';
 import './globals.css';
 
@@ -27,11 +27,11 @@ const generalSans = localFont({
   display: 'swap',
 });
 
-const slideOverlay = localFont({
-  src: '../fonts/Montserrat-Bold.ttf',
-  variable: '--font-slide-overlay',
+const tiktokSans = TikTok_Sans({
+  weight: ['500', '700'],
+  subsets: ['latin'],
+  variable: '--font-tiktok-sans',
   display: 'swap',
-  weight: '700',
 });
 
 export const metadata: Metadata = {
@@ -43,7 +43,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html
       lang="en"
-      className={`${fraunces.variable} ${jetbrainsMono.variable} ${generalSans.variable} ${slideOverlay.variable}`}
+      className={`${fraunces.variable} ${jetbrainsMono.variable} ${generalSans.variable} ${tiktokSans.variable}`}
     >
       <body className="h-screen overflow-hidden bg-surface font-sans text-text-primary antialiased">
         {children}

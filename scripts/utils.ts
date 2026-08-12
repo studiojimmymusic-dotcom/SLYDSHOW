@@ -54,6 +54,7 @@ export interface PinterestConfig {
 export interface OverlayConfig {
   enabled: boolean;
   fontPath: string;
+  bodyFontPath?: string;
   fontColor: string;
   strokeColor: string;
   strokeWidthPercent: number;
@@ -72,10 +73,10 @@ export interface SlideTextStyle {
 }
 
 export const DEFAULT_SLIDE_STYLE: SlideTextStyle = {
-  textPositionFromTop: 0.2,
-  maxWidthPercent: 0.84,
-  bodySizePercent: 0.05,
-  headSizePercent: 0.046,
+  textPositionFromTop: 0.12,
+  maxWidthPercent: 0.88,
+  bodySizePercent: 0.051,
+  headSizePercent: 0.043,
   showHeadlineBox: true,
 };
 
