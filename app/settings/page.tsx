@@ -237,7 +237,8 @@ export default function SettingsPage() {
               <span>
                 <span className="block text-[13px] font-medium text-text-primary">TikTok Creator Inbox</span>
                 <span className="block text-[12px] text-text-secondary">
-                  Sends photos to TikTok so you can add text + music, then publish.
+                  Sends photos to TikTok Activity → System notifications (not Profile Drafts). Max ~5 pending/day.
+                  Update TikTok to 31.8+.
                 </span>
               </span>
             </label>

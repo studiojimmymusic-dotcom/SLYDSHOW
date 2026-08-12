@@ -171,16 +171,45 @@ export async function postToTikTok(
     log('post-to-tiktok', `Uploaded ${path.basename(slidePath)}`);
   }
 
-  // Inbox: SELF_ONLY + real title. Live/Zernio draft: configured privacy.
-  const preferredPrivacy = tiktokInboxDraft
-    ? 'SELF_ONLY'
-    : config.posting.privacyLevel || 'PUBLIC_TO_EVERYONE';
-  const privacyLevel = await resolvePrivacyLevel(accountId, preferredPrivacy);
   const title = photoTitleFromCopy(copy);
 
   // zernio = dashboard draft only (no TikTok yet)
-  // inbox = publishNow + tiktokSettings.draft → Creator Inbox
-  // live = publishNow without draft → profile
+  // inbox = publishNow + tiktokSettings.draft → Creator Inbox (MEDIA_UPLOAD)
+  // live = publishNow without draft → profile (DIRECT_POST)
+  //
+  // TikTok MEDIA_UPLOAD rejects / mishandles Direct Post-only fields
+  // (privacy_level, allow_comment/duet/stitch, auto_add_music). Those belong
+  // only on live/direct posts. Inbox payload must stay title + description + media.
+  let privacyLevel = '';
+  let tiktokSettings: Record<string, unknown>;
+
+  if (tiktokInboxDraft) {
+    tiktokSettings = {
+      media_type: 'photo',
+      photo_cover_index: 0,
+      description: copy.caption,
+      content_preview_confirmed: true,
+      express_consent_given: true,
+      draft: true,
+    };
+  } else {
+    const preferredPrivacy = config.posting.privacyLevel || 'PUBLIC_TO_EVERYONE';
+    privacyLevel = await resolvePrivacyLevel(accountId, preferredPrivacy);
+    tiktokSettings = {
+      privacy_level: privacyLevel,
+      allow_comment: true,
+      allow_duet: true,
+      allow_stitch: true,
+      media_type: 'photo',
+      photo_cover_index: 0,
+      description: copy.caption,
+      auto_add_music: false,
+      content_preview_confirmed: true,
+      express_consent_given: true,
+      draft: false,
+    };
+  }
+
   const body = {
     content: title,
     mediaItems,
@@ -192,23 +221,7 @@ export async function postToTikTok(
         accountId,
       },
     ],
-    tiktokSettings: {
-      privacy_level: privacyLevel,
-      allow_comment: true,
-      ...(tiktokInboxDraft
-        ? {}
-        : {
-            allow_duet: true,
-            allow_stitch: true,
-          }),
-      media_type: 'photo',
-      photo_cover_index: 0,
-      description: copy.caption,
-      auto_add_music: false,
-      content_preview_confirmed: true,
-      express_consent_given: true,
-      draft: tiktokInboxDraft,
-    },
+    tiktokSettings,
   };
 
   log(
@@ -250,7 +263,7 @@ export async function postToTikTok(
     tiktokInboxDraft,
     zernioOnlyDraft,
     publishNow: !zernioOnlyDraft,
-    privacyLevel,
+    privacyLevel: privacyLevel || null,
     platformPostUrl: platform?.platformPostUrl || null,
     platformPostId: platform?.platformPostId || null,
     platformError: platform?.errorMessage || null,
@@ -271,8 +284,8 @@ export async function postToTikTok(
   } else if (tiktokInboxDraft) {
     console.log('\nSent to TikTok Creator Inbox');
     console.log(`Title: ${title}`);
-    console.log('Open TikTok → Activity → System notifications → tap the upload');
-    console.log('Also check Profile → Drafts. Clear old pending inbox shares first (max 5/day).\n');
+    console.log('Open TikTok → Inbox / Activity → System notifications → tap the upload');
+    console.log('Not Profile → Drafts. App must be 31.8+. Max 5 pending API uploads per day.\n');
   } else {
     console.log('\nPublished live to TikTok');
     if (platform?.platformPostUrl) console.log(`URL: ${platform.platformPostUrl}`);

@@ -340,10 +340,13 @@ export default function StudioDeskPage() {
 
       if (shareMode === 'zernio') {
         setPosted(`Zernio draft saved for ${accountLabel}${data.zernioId ? ` (${data.zernioId})` : ''}.`);
-        pushLog('Saved as Zernio draft (add text in TikTok).');
+        pushLog('Saved as Zernio draft (not sent to TikTok yet).');
       } else {
-        setPosted(`Inbox sent to ${accountLabel}.`);
-        pushLog(`Sent to TikTok Creator Inbox${data.title ? ` — "${data.title}"` : ''}`);
+        setPosted(
+          `Sent to @${accountLabel}. Open TikTok → Inbox → System notifications → tap the upload. Not Profile → Drafts.`
+        );
+        pushLog(`Creator Inbox upload accepted${data.title ? ` — "${data.title}"` : ''}`);
+        pushLog('If nothing shows: update TikTok app, force-close it, and clear old pending API uploads (max 5/day).');
         if (data.platformPostId) pushLog(`TikTok publish id: ${data.platformPostId}`);
       }
     } catch (error) {
