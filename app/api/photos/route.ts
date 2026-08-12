@@ -3,8 +3,8 @@ import { listStudioPhotos } from '../../../scripts/studio-api';
 export const runtime = 'nodejs';
 export const maxDuration = 120;
 
-function encode(obj: unknown): Buffer {
-  return Buffer.from(`${JSON.stringify(obj)}\n`, 'utf8');
+function line(obj: unknown): string {
+  return `${JSON.stringify(obj)}\n`;
 }
 
 export async function POST(req: Request) {
@@ -15,9 +15,10 @@ export async function POST(req: Request) {
     body = {};
   }
 
-  const stream = new ReadableStream({
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
-      const send = (obj: unknown) => controller.enqueue(encode(obj));
+      const send = (obj: unknown) => controller.enqueue(encoder.encode(line(obj)));
       try {
         const photos = await listStudioPhotos(
           body.limit || 24,

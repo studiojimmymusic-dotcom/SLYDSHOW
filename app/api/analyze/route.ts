@@ -3,22 +3,23 @@ import { analyzeTikTokUrl } from '../../../scripts/studio-api';
 export const runtime = 'nodejs';
 export const maxDuration = 120;
 
-function encode(obj: unknown): Buffer {
-  return Buffer.from(`${JSON.stringify(obj)}\n`, 'utf8');
+function line(obj: unknown): string {
+  return `${JSON.stringify(obj)}\n`;
 }
 
 export async function POST(req: Request) {
   const { url } = (await req.json()) as { url?: string };
   if (!url?.trim()) {
-    return new Response(encode({ type: 'error', error: 'Paste a TikTok photo URL' }), {
+    return new Response(line({ type: 'error', error: 'Paste a TikTok photo URL' }), {
       status: 400,
       headers: { 'Content-Type': 'application/x-ndjson; charset=utf-8' },
     });
   }
 
-  const stream = new ReadableStream({
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
-      const send = (obj: unknown) => controller.enqueue(encode(obj));
+      const send = (obj: unknown) => controller.enqueue(encoder.encode(line(obj)));
       try {
         const result = await analyzeTikTokUrl(url.trim(), (message) => {
           send({ type: 'progress', message });
