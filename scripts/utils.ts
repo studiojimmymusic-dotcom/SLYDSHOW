@@ -2,15 +2,22 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import * as dotenv from 'dotenv';
+import bundledConfig from '../config.json';
 
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
 function findRoot(): string {
-  for (const dir of [process.cwd(), path.resolve(__dirname, '..')]) {
+  const candidates = [
+    process.cwd(),
+    path.resolve(process.cwd(), '..'),
+    path.resolve(__dirname, '..'),
+    path.resolve(__dirname, '../..'),
+  ];
+  for (const dir of candidates) {
     if (fs.existsSync(path.join(dir, 'config.json'))) return dir;
   }
-  return path.resolve(__dirname, '..');
+  return process.cwd();
 }
 
 export const ROOT = findRoot();
@@ -127,8 +134,18 @@ export interface SlideCopy {
 }
 
 export function loadConfig(): AppConfig {
-  const configPath = path.join(ROOT, 'config.json');
-  return JSON.parse(fs.readFileSync(configPath, 'utf8')) as AppConfig;
+  const candidates = [
+    path.join(process.cwd(), 'config.json'),
+    path.join(ROOT, 'config.json'),
+    path.resolve(__dirname, '../config.json'),
+  ];
+  for (const configPath of candidates) {
+    if (fs.existsSync(configPath)) {
+      return JSON.parse(fs.readFileSync(configPath, 'utf8')) as AppConfig;
+    }
+  }
+  // Bundled fallback for Vercel serverless (file tracing may omit loose config.json)
+  return bundledConfig as AppConfig;
 }
 
 export function requireEnv(name: string): string {
