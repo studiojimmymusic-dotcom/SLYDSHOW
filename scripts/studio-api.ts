@@ -33,7 +33,13 @@ export interface AnalyzeResult {
   tiktokId: string;
   creator: string;
   views: number;
+  likes: number;
+  comments: number;
+  shares: number;
+  saves: number;
   caption: string;
+  sourceCaption: string;
+  hashtags: string[];
   slides: SlideText[];
 }
 
@@ -93,7 +99,13 @@ export async function analyzeTikTokUrl(
     tiktokId: source.tiktokId,
     creator: source.creator,
     views: source.views,
+    likes: source.likes,
+    comments: source.comments,
+    shares: source.shares,
+    saves: source.saves,
     caption: '',
+    sourceCaption: source.caption || '',
+    hashtags: source.hashtags || [],
     slides,
   };
 }

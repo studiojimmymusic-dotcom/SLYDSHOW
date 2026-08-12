@@ -333,6 +333,38 @@ export default function StudioDeskPage() {
       setProjectTitle(project.title);
       window.history.replaceState({}, '', `/?project=${encodeURIComponent(project.id)}`);
       pushLog(`Saved project: ${project.title}`);
+      pushLog('Feeding Content Intelligence…');
+      try {
+        const feedRes = await fetch('/api/intelligence/feed', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sourceUrl: url.trim(),
+            tiktokId: data.tiktokId,
+            creator: data.creator,
+            views: data.views,
+            likes: data.likes,
+            comments: data.comments,
+            shares: data.shares,
+            saves: data.saves,
+            caption: data.sourceCaption,
+            hashtags: data.hashtags,
+            slides: importedSlides,
+          }),
+        });
+        const feed = await feedRes.json();
+        if (!feedRes.ok) {
+          pushLog(feed.error || 'Could not feed Content Intelligence (check FELAR_AGENT_API_KEY)');
+        } else if (feed.created) {
+          pushLog('Queued for Content Intelligence analysis');
+        } else if (feed.requeued) {
+          pushLog('Updated Content Intelligence with on-screen text');
+        } else {
+          pushLog('Already in Content Intelligence');
+        }
+      } catch {
+        pushLog('Could not reach Content Intelligence');
+      }
       pushLog('Import complete');
     } catch (error) {
       pushLog(error instanceof Error ? error.message : 'Analyze failed');
@@ -408,6 +440,36 @@ export default function StudioDeskPage() {
       pushLog(`Last slide ready: ${file.name}`);
     } catch (error) {
       pushLog(error instanceof Error ? error.message : 'Could not read screenshot');
+    }
+  }
+
+  async function generateOriginal() {
+    if (busy) return;
+    setBusy(true);
+    setLogLines([]);
+    pushLog(`Writing original copy from what’s working…`);
+    try {
+      const res = await fetch('/api/intelligence/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Generate failed');
+      const nextSlides = (data.slides || []) as SlideText[];
+      if (!nextSlides.length) throw new Error('No slides returned');
+      setSlides(nextSlides);
+      setCaption(String(data.caption || ''));
+      pushLog(
+        data.format
+          ? `Original ${data.format}${data.hook ? ` — ${data.hook}` : ''}`
+          : 'Original copy ready'
+      );
+      pushLog('Copy is FELAR-original, not a remake of the imported post.');
+    } catch (error) {
+      pushLog(error instanceof Error ? error.message : 'Generate failed');
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -733,8 +795,22 @@ export default function StudioDeskPage() {
           </section>
 
           <section className="rounded-xl border border-border bg-background p-5 shadow-[0_1px_2px_rgba(20,19,17,0.03)]">
-            <h2 className="font-sans text-[15px] font-semibold text-text-primary">Copy</h2>
-            <p className="mt-1 text-[13px] text-text-secondary">Titles/body from the imported carousel. Copy into TikTok after you Share.</p>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2 className="font-sans text-[15px] font-semibold text-text-primary">Copy</h2>
+                <p className="mt-1 text-[13px] text-text-secondary">
+                  Import reads the original. Write original uses FELAR patterns instead of copying that post.
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={busy}
+                onClick={() => void generateOriginal()}
+              >
+                Write original
+              </Button>
+            </div>
 
             {slides.length === 0 ? (
               <p className="mt-5 text-[13px] leading-5 text-text-tertiary">Slide text shows here after import.</p>
