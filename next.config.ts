@@ -1,9 +1,9 @@
 import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
-  serverExternalPackages: ['sharp', 'openai', 'opentype.js'],
+  serverExternalPackages: ['sharp', 'openai'],
   outputFileTracingIncludes: {
-    '/api/**/*': ['./config.json', './fonts/**/*'],
+    '/api/**/*': ['./config.json'],
   },
 };
 

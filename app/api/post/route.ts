@@ -24,13 +24,6 @@ export async function POST(req: Request) {
     const body = (await req.json()) as {
       imageUrls?: string[];
       slides?: SlideLayout[];
-      styles?: Array<{
-        textPositionFromTop?: number;
-        maxWidthPercent?: number;
-        bodySizePercent?: number;
-        headSizePercent?: number;
-        showHeadlineBox?: boolean;
-      }>;
       lastSlideDataUrl?: string;
       slide6DataUrl?: string;
       caption?: string;
@@ -61,7 +54,6 @@ export async function POST(req: Request) {
       parseMode(body.mode),
       {
         lastSlideBuffer,
-        styles: body.styles,
       }
     );
     return NextResponse.json({ ok: true, ...result });

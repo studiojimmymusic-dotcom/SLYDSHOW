@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { Fraunces, JetBrains_Mono, TikTok_Sans } from 'next/font/google';
+import { Fraunces, JetBrains_Mono } from 'next/font/google';
 import localFont from 'next/font/local';
 import './globals.css';
 
@@ -27,13 +27,6 @@ const generalSans = localFont({
   display: 'swap',
 });
 
-const tiktokSans = TikTok_Sans({
-  weight: ['500', '700'],
-  subsets: ['latin'],
-  variable: '--font-tiktok-sans',
-  display: 'swap',
-});
-
 export const metadata: Metadata = {
   title: 'SLYDSHOW',
   description: 'Remake TikTok photo carousels with studio photos.',
@@ -43,7 +36,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html
       lang="en"
-      className={`${fraunces.variable} ${jetbrainsMono.variable} ${generalSans.variable} ${tiktokSans.variable}`}
+      className={`${fraunces.variable} ${jetbrainsMono.variable} ${generalSans.variable}`}
     >
       <body className="h-screen overflow-hidden bg-surface font-sans text-text-primary antialiased">
         {children}

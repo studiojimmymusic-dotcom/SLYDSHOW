@@ -1,22 +1,6 @@
-export type EditorSlideStyle = {
-  textPositionFromTop: number;
-  maxWidthPercent: number;
-  bodySizePercent: number;
-  headSizePercent: number;
-  showHeadlineBox: boolean;
-};
-
 export type EditorSlideCopy = {
   headline: string;
   body: string;
-};
-
-export const DEFAULT_SLIDE_STYLE: EditorSlideStyle = {
-  textPositionFromTop: 0.12,
-  maxWidthPercent: 0.88,
-  bodySizePercent: 0.051,
-  headSizePercent: 0.043,
-  showHeadlineBox: true,
 };
 
 export const FELAR_CTA_SLIDE: EditorSlideCopy = {
@@ -34,10 +18,6 @@ export function contentSlideCount(slideCount: number): number {
 
 export function totalSlideCount(contentCount: number): number {
   return contentSlideCount(contentCount) + 1;
-}
-
-export function makeDefaultStyles(count = 6): EditorSlideStyle[] {
-  return Array.from({ length: count }, () => ({ ...DEFAULT_SLIDE_STYLE }));
 }
 
 /**

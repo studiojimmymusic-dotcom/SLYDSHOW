@@ -107,14 +107,6 @@ export async function listStudioPhotos(
   return fetchPhotoCandidates(limit, excludeKeys, query, onProgress);
 }
 
-export type PublishSlideStyle = {
-  textPositionFromTop?: number;
-  maxWidthPercent?: number;
-  bodySizePercent?: number;
-  headSizePercent?: number;
-  showHeadlineBox?: boolean;
-};
-
 export async function publishSelectedPhotos(
   imageUrls: string[],
   slides: SlideLayout[],
@@ -122,11 +114,10 @@ export async function publishSelectedPhotos(
   accountId?: string,
   mode: TikTokPostMode = 'inbox',
   opts?: {
-    /** App screenshot burned as the final slide */
+    /** App screenshot for the final slide */
     lastSlideBuffer?: Buffer;
     /** @deprecated use lastSlideBuffer */
     slide6Buffer?: Buffer;
-    styles?: PublishSlideStyle[];
   }
 ): Promise<{
   postDir: string;
@@ -155,14 +146,12 @@ export async function publishSelectedPhotos(
   const timestamp = makePostTimestamp();
   const postDir = resolvePath('posts', `studio-${timestamp}`);
   const imagesDir = path.join(postDir, 'images');
-  const finalDir = path.join(postDir, 'final');
 
   // Always start from an empty folder — never inherit leftovers from a prior share
   if (fs.existsSync(postDir)) {
     fs.rmSync(postDir, { recursive: true, force: true });
   }
   ensureDir(imagesDir);
-  ensureDir(finalDir);
 
   const sourceKeys = imageUrls.map(pinImageKey);
   writeJson(path.join(postDir, 'sources.json'), {
@@ -205,14 +194,6 @@ export async function publishSelectedPhotos(
     body: layout.body || '',
   }));
 
-  const { renderOverlayToFile } = await import('./add-overlays');
-  for (let i = 0; i < total; i++) {
-    const rawPath = path.join(imagesDir, `slide-${i + 1}-raw.jpg`);
-    const outPath = path.join(finalDir, `slide-${i + 1}.jpg`);
-    log('studio-api', `Burning text onto slide ${i + 1}`);
-    await renderOverlayToFile(rawPath, layouts[i], outPath, opts?.styles?.[i]);
-  }
-
   const copy: SlideCopy = {
     hook: layouts[0]?.headline || layouts[0]?.body || 'FELAR',
     slides: layouts.map((layout) =>
@@ -223,7 +204,6 @@ export async function publishSelectedPhotos(
     hookCategory: 'studio-dashboard',
   };
   writeJson(path.join(postDir, 'copy.json'), copy);
-  writeJson(path.join(postDir, 'styles.json'), opts?.styles || []);
 
   const record = await postToTikTok(copy, postDir, accountId, mode);
   markPinsUsed(sourceKeys);
