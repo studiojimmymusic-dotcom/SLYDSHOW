@@ -122,6 +122,9 @@ export async function publishSelectedPhotos(
   accountId?: string,
   mode: TikTokPostMode = 'inbox',
   opts?: {
+    /** App screenshot burned as the final slide */
+    lastSlideBuffer?: Buffer;
+    /** @deprecated use lastSlideBuffer */
     slide6Buffer?: Buffer;
     styles?: PublishSlideStyle[];
   }
@@ -135,14 +138,17 @@ export async function publishSelectedPhotos(
   title: string;
   sourceKeys: string[];
 }> {
-  if (imageUrls.length !== 5) {
-    throw new Error('Pick exactly 5 photos before posting');
+  const contentCount = imageUrls.length;
+  if (contentCount < 1 || contentCount > 5) {
+    throw new Error('Pick between 1 and 5 photos before posting');
   }
-  if (!opts?.slide6Buffer?.length) {
-    throw new Error('Upload a screenshot for slide 6 before sharing');
+  const promoBuffer = opts?.lastSlideBuffer || opts?.slide6Buffer;
+  if (!promoBuffer?.length) {
+    throw new Error('Upload an app screenshot for the last slide before sharing');
   }
-  if (slides.length < 6) {
-    throw new Error('Need text for all 6 slides');
+  const total = contentCount + 1;
+  if (slides.length < total) {
+    throw new Error(`Need text for all ${total} slides`);
   }
 
   const config = loadConfig();
@@ -162,11 +168,12 @@ export async function publishSelectedPhotos(
   writeJson(path.join(postDir, 'sources.json'), {
     imageUrls,
     sourceKeys,
-    slideCount: 6,
-    hasSlide6Upload: true,
+    contentCount,
+    slideCount: total,
+    hasPromoUpload: true,
   });
 
-  for (let i = 0; i < imageUrls.length; i++) {
+  for (let i = 0; i < contentCount; i++) {
     const outPath = path.join(imagesDir, `slide-${i + 1}-raw.jpg`);
     log('studio-api', `Download slide ${i + 1}: ${sourceKeys[i]}`);
     await downloadAndNormalize(
@@ -180,30 +187,30 @@ export async function publishSelectedPhotos(
     }
   }
 
-  const slide6Raw = path.join(imagesDir, 'slide-6-raw.jpg');
-  await sharp(opts.slide6Buffer)
+  const promoRaw = path.join(imagesDir, `slide-${total}-raw.jpg`);
+  await sharp(promoBuffer)
     .rotate()
     .resize(config.overlays.outputWidth, config.overlays.outputHeight, {
       fit: 'cover',
       position: 'centre',
     })
     .jpeg({ quality: 92 })
-    .toFile(slide6Raw);
-  if (!fs.existsSync(slide6Raw) || fs.statSync(slide6Raw).size < 1000) {
-    throw new Error('Slide 6 screenshot did not save correctly');
+    .toFile(promoRaw);
+  if (!fs.existsSync(promoRaw) || fs.statSync(promoRaw).size < 1000) {
+    throw new Error('Promo screenshot did not save correctly');
   }
 
-  const layouts = slides.slice(0, 6).map((layout) => ({
+  const layouts = slides.slice(0, total).map((layout) => ({
     headline: layout.headline,
     body: layout.body || '',
   }));
 
   const { renderOverlayToFile } = await import('./add-overlays');
-  for (let i = 0; i < 6; i++) {
+  for (let i = 0; i < total; i++) {
     const rawPath = path.join(imagesDir, `slide-${i + 1}-raw.jpg`);
     const outPath = path.join(finalDir, `slide-${i + 1}.jpg`);
     log('studio-api', `Burning text onto slide ${i + 1}`);
-    await renderOverlayToFile(rawPath, layouts[i], outPath, opts.styles?.[i]);
+    await renderOverlayToFile(rawPath, layouts[i], outPath, opts?.styles?.[i]);
   }
 
   const copy: SlideCopy = {
@@ -216,7 +223,7 @@ export async function publishSelectedPhotos(
     hookCategory: 'studio-dashboard',
   };
   writeJson(path.join(postDir, 'copy.json'), copy);
-  writeJson(path.join(postDir, 'styles.json'), opts.styles || []);
+  writeJson(path.join(postDir, 'styles.json'), opts?.styles || []);
 
   const record = await postToTikTok(copy, postDir, accountId, mode);
   markPinsUsed(sourceKeys);

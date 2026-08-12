@@ -19,10 +19,22 @@ export const DEFAULT_SLIDE_STYLE: EditorSlideStyle = {
   showHeadlineBox: true,
 };
 
-export const FELAR_SLIDE6: EditorSlideCopy = {
+export const FELAR_CTA_SLIDE: EditorSlideCopy = {
   headline: 'BUILD YOUR BEAT STORE',
   body: 'on FELAR\nusefelar.com',
 };
+
+/** @deprecated use FELAR_CTA_SLIDE */
+export const FELAR_SLIDE6 = FELAR_CTA_SLIDE;
+
+/** Content photo slots from an imported carousel (1–5). Promo screenshot is always last. */
+export function contentSlideCount(slideCount: number): number {
+  return Math.max(1, Math.min(5, Math.floor(slideCount) || 1));
+}
+
+export function totalSlideCount(contentCount: number): number {
+  return contentSlideCount(contentCount) + 1;
+}
 
 export function makeDefaultStyles(count = 6): EditorSlideStyle[] {
   return Array.from({ length: count }, () => ({ ...DEFAULT_SLIDE_STYLE }));

@@ -9,10 +9,12 @@ import { loadLocalDeskSettings } from './lib/desk-settings-client';
 import {
   EditorSlideCopy,
   EditorSlideStyle,
-  FELAR_SLIDE6,
+  FELAR_CTA_SLIDE,
   buildPasteCaption,
+  contentSlideCount,
   fileToSlideDataUrl,
   makeDefaultStyles,
+  totalSlideCount,
 } from './lib/slide-style';
 
 type SlideText = { index: number; headline?: string; body: string };
@@ -83,8 +85,9 @@ function repairSlide(slide: SlideText): { title: string; body: string } {
 }
 
 function buildEditorCopies(slides: SlideText[]): EditorSlideCopy[] {
+  const needed = contentSlideCount(slides.length);
   const copies: EditorSlideCopy[] = [];
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < needed; i++) {
     const slide = slides[i];
     if (!slide) {
       copies.push({ headline: '', body: '' });
@@ -93,7 +96,7 @@ function buildEditorCopies(slides: SlideText[]): EditorSlideCopy[] {
     const fixed = repairSlide(slide);
     copies.push({ headline: fixed.title, body: fixed.body });
   }
-  copies.push({ ...FELAR_SLIDE6 });
+  copies.push({ ...FELAR_CTA_SLIDE });
   return copies;
 }
 
@@ -130,7 +133,7 @@ export default function StudioDeskPage() {
   const [slide6Name, setSlide6Name] = useState('');
   const [stage, setStage] = useState<Stage>('pick');
   const [editorCopies, setEditorCopies] = useState<EditorSlideCopy[]>([]);
-  const [editorStyles, setEditorStyles] = useState<EditorSlideStyle[]>(() => makeDefaultStyles(6));
+  const [editorStyles, setEditorStyles] = useState<EditorSlideStyle[]>(() => makeDefaultStyles(2));
   const [activeSlide, setActiveSlide] = useState(0);
   const [posted, setPosted] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -174,21 +177,28 @@ export default function StudioDeskPage() {
     })();
   }, []);
 
-  const canContinue = selected.length === 5 && Boolean(slide6DataUrl);
+  const photoSlots = slides.length ? contentSlideCount(slides.length) : 0;
+  const totalSlots = photoSlots ? totalSlideCount(photoSlots) : 0;
+  const promoSlot = totalSlots; // last slide
+  const canContinue = photoSlots > 0 && selected.length === photoSlots && Boolean(slide6DataUrl);
   const editorPreviews = useMemo(
     () => [
-      ...selected.map((photo, i) => ({
+      ...selected.slice(0, photoSlots).map((photo, i) => ({
         key: photo.id,
         src: photo.url,
         label: String(i + 1),
       })),
-      {
-        key: 'slide-6',
-        src: slide6DataUrl,
-        label: '6',
-      },
+      ...(slide6DataUrl
+        ? [
+            {
+              key: 'promo-slide',
+              src: slide6DataUrl,
+              label: String(promoSlot || selected.length + 1),
+            },
+          ]
+        : []),
     ],
-    [selected, slide6DataUrl]
+    [selected, slide6DataUrl, photoSlots, promoSlot]
   );
 
   async function analyze(e?: FormEvent) {
@@ -198,6 +208,9 @@ export default function StudioDeskPage() {
     setBusy(true);
     setPosted('');
     setStage('pick');
+    setSelected([]);
+    setSlide6DataUrl('');
+    setSlide6Name('');
     setLogLines([]);
     pushLog('Starting import…');
     try {
@@ -213,6 +226,9 @@ export default function StudioDeskPage() {
       setSlides(importedSlides);
       const copies = buildEditorCopies(importedSlides);
       setCaption(buildPasteCaption(copies));
+      pushLog(
+        `Need ${contentSlideCount(importedSlides.length)} photos + app screenshot as slide ${totalSlideCount(importedSlides.length)}`
+      );
       pushLog('Finding studio photos…');
       await loadPhotos({ replace: true, exclude: [], query: searchQuery, keepBusy: true });
       pushLog('Import complete');
@@ -271,9 +287,13 @@ export default function StudioDeskPage() {
   }
 
   function togglePhoto(photo: Photo) {
+    if (!photoSlots) {
+      pushLog('Import a carousel first');
+      return;
+    }
     setSelected((prev) => {
       if (prev.some((p) => p.id === photo.id)) return prev.filter((p) => p.id !== photo.id);
-      if (prev.length >= 5) return prev;
+      if (prev.length >= photoSlots) return prev;
       return [...prev, photo];
     });
   }
@@ -284,9 +304,9 @@ export default function StudioDeskPage() {
       const dataUrl = await fileToSlideDataUrl(file);
       setSlide6DataUrl(dataUrl);
       setSlide6Name(file.name);
-      pushLog(`Slide 6 ready: ${file.name}`);
+      pushLog(`Slide ${promoSlot || 'last'} ready: ${file.name}`);
     } catch (error) {
-      pushLog(error instanceof Error ? error.message : 'Could not read slide 6 image');
+      pushLog(error instanceof Error ? error.message : 'Could not read promo screenshot');
     }
   }
 
@@ -296,12 +316,14 @@ export default function StudioDeskPage() {
 
   function openEditor() {
     if (!canContinue) {
-      pushLog(selected.length !== 5 ? 'Pick 5 photos first' : 'Upload a screenshot for slide 6');
+      if (!photoSlots) pushLog('Import a carousel first');
+      else if (selected.length !== photoSlots) pushLog(`Pick ${photoSlots} photos first`);
+      else pushLog(`Upload an app screenshot for slide ${promoSlot}`);
       return;
     }
     const copies = buildEditorCopies(slides);
     setEditorCopies(copies);
-    setEditorStyles(makeDefaultStyles(6));
+    setEditorStyles(makeDefaultStyles(copies.length));
     syncCaptionFromCopies(copies);
     setActiveSlide(0);
     setStage('edit');
@@ -316,8 +338,12 @@ export default function StudioDeskPage() {
   }
 
   async function postDraft() {
-    if (selected.length !== 5 || !slide6DataUrl) {
-      pushLog('Need 5 photos and a slide 6 screenshot');
+    if (selected.length !== photoSlots || !slide6DataUrl) {
+      pushLog(
+        photoSlots
+          ? `Need ${photoSlots} photos and a slide ${promoSlot} screenshot`
+          : 'Import a carousel first'
+      );
       return;
     }
     if (!accountId) {
@@ -325,17 +351,17 @@ export default function StudioDeskPage() {
       return;
     }
 
-    const imageUrls = selected.map((p) => p.url);
-    const imageIds = selected.map((p) => p.id);
-    const slidesPayload = editorCopies.slice(0, 6).map((c) => ({
+    const imageUrls = selected.slice(0, photoSlots).map((p) => p.url);
+    const imageIds = selected.slice(0, photoSlots).map((p) => p.id);
+    const slidesPayload = editorCopies.slice(0, totalSlots).map((c) => ({
       headline: c.headline.trim() || undefined,
       body: c.body,
     }));
-    const stylesPayload = editorStyles.slice(0, 6);
+    const stylesPayload = editorStyles.slice(0, totalSlots);
     const captionPayload = caption.trim() || buildPasteCaption(editorCopies);
     const modePayload = shareMode;
     const accountPayload = accountId;
-    const slide6Payload = slide6DataUrl;
+    const lastSlidePayload = slide6DataUrl;
 
     setBusy(true);
     setLogLines([]);
@@ -345,7 +371,9 @@ export default function StudioDeskPage() {
         ? `Burning text + saving Zernio draft for ${accountLabel}…`
         : `Burning text + sending TikTok inbox draft to ${accountLabel}…`
     );
-    pushLog(`Photos: ${imageIds.map((id) => id.split('/').pop() || id).join(', ')} + slide 6 upload`);
+    pushLog(
+      `Photos: ${imageIds.map((id) => id.split('/').pop() || id).join(', ')} + slide ${promoSlot} upload`
+    );
     try {
       const res = await fetch('/api/post', {
         method: 'POST',
@@ -354,7 +382,7 @@ export default function StudioDeskPage() {
           imageUrls,
           slides: slidesPayload,
           styles: stylesPayload,
-          slide6DataUrl: slide6Payload,
+          lastSlideDataUrl: lastSlidePayload,
           caption: captionPayload,
           accountId: accountPayload,
           mode: modePayload,
@@ -388,7 +416,9 @@ export default function StudioDeskPage() {
     <DeskShell
       footer={
         <span className="font-mono">
-          {selected.length}/5 photos · slide 6 {slide6DataUrl ? 'ready' : 'needed'}
+          {photoSlots
+            ? `${selected.length}/${photoSlots} photos · slide ${promoSlot} ${slide6DataUrl ? 'ready' : 'needed'}`
+            : 'Import a carousel to start'}
         </span>
       }
       headerLeft={status || 'Paste a TikTok photo URL to start'}
@@ -417,7 +447,9 @@ export default function StudioDeskPage() {
               <option value="zernio">Zernio draft</option>
               <option value="inbox">TikTok inbox</option>
             </select>
-            <span className="font-mono text-[12px] text-text-secondary">{selected.length}/5</span>
+            <span className="font-mono text-[12px] text-text-secondary">
+              {photoSlots ? `${selected.length}/${photoSlots}` : '—'}
+            </span>
             <Button type="button" onClick={openEditor} disabled={busy || !canContinue}>
               Continue
             </Button>
@@ -518,8 +550,8 @@ export default function StudioDeskPage() {
                 Studio
               </h1>
               <p className="mt-1 text-[14px] text-text-secondary">
-                Pick 5 photos, upload your app screenshot for slide 6, then Continue to edit text before
-                Share.
+                Pick photos to match the carousel, upload your app screenshot as the last slide, then
+                Continue to edit text before Share.
               </p>
             </div>
 
@@ -550,66 +582,83 @@ export default function StudioDeskPage() {
               <div className="mb-4 flex items-baseline justify-between gap-3">
                 <h2 className="font-sans text-[15px] font-semibold text-text-primary">Slides</h2>
                 <p className="text-[13px] text-text-secondary">
-                  {creator ? `${creator} · ${views.toLocaleString()} views` : '5 photos + app screenshot'}
+                  {creator
+                    ? `${creator} · ${views.toLocaleString()} views · ${photoSlots}+1 slides`
+                    : photoSlots
+                      ? `${photoSlots} photos + app screenshot`
+                      : 'Import a carousel first'}
                 </p>
               </div>
-              <div className="grid grid-cols-6 gap-3">
-                {Array.from({ length: 5 }).map((_, i) => {
-                  const photo = selected[i];
-                  return (
-                    <button
-                      key={i}
-                      type="button"
-                      onClick={() => photo && togglePhoto(photo)}
-                      className="overflow-hidden rounded-card border border-border bg-surface text-left"
-                    >
-                      <div className="relative aspect-[9/16]">
-                        {photo ? (
-                          <PhotoImg
-                            src={photo.thumbUrl}
-                            fallback={photo.url}
-                            className="h-full w-full object-cover"
-                          />
-                        ) : (
-                          <div className="grid h-full place-items-center font-mono text-[12px] text-text-tertiary">
-                            {i + 1}
-                          </div>
-                        )}
-                      </div>
-                    </button>
-                  );
-                })}
-                <button
-                  type="button"
-                  onClick={() => slide6InputRef.current?.click()}
-                  className="overflow-hidden rounded-card border border-dashed border-border bg-surface text-left"
+              {photoSlots ? (
+                <div
+                  className="grid gap-3"
+                  style={{ gridTemplateColumns: `repeat(${totalSlots}, minmax(0, 1fr))` }}
                 >
-                  <div className="relative aspect-[9/16]">
-                    {slide6DataUrl ? (
-                      <img src={slide6DataUrl} alt="" className="h-full w-full object-cover" />
-                    ) : (
-                      <div className="grid h-full place-items-center gap-1 px-2 text-center">
-                        <span className="font-mono text-[12px] text-text-tertiary">6</span>
-                        <span className="text-[11px] leading-4 text-text-secondary">Upload app screenshot</span>
-                      </div>
-                    )}
-                  </div>
-                </button>
-                <input
-                  ref={slide6InputRef}
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0] || null;
-                    void onSlide6File(file);
-                    e.target.value = '';
-                  }}
-                />
-              </div>
+                  {Array.from({ length: photoSlots }).map((_, i) => {
+                    const photo = selected[i];
+                    return (
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => photo && togglePhoto(photo)}
+                        className="overflow-hidden rounded-card border border-border bg-surface text-left"
+                      >
+                        <div className="relative aspect-[9/16]">
+                          {photo ? (
+                            <PhotoImg
+                              src={photo.thumbUrl}
+                              fallback={photo.url}
+                              className="h-full w-full object-cover"
+                            />
+                          ) : (
+                            <div className="grid h-full place-items-center font-mono text-[12px] text-text-tertiary">
+                              {i + 1}
+                            </div>
+                          )}
+                        </div>
+                      </button>
+                    );
+                  })}
+                  <button
+                    type="button"
+                    onClick={() => slide6InputRef.current?.click()}
+                    className="overflow-hidden rounded-card border border-dashed border-border bg-surface text-left"
+                  >
+                    <div className="relative aspect-[9/16]">
+                      {slide6DataUrl ? (
+                        <img src={slide6DataUrl} alt="" className="h-full w-full object-cover" />
+                      ) : (
+                        <div className="grid h-full place-items-center gap-1 px-2 text-center">
+                          <span className="font-mono text-[12px] text-text-tertiary">{promoSlot}</span>
+                          <span className="text-[11px] leading-4 text-text-secondary">
+                            Upload app screenshot
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </button>
+                  <input
+                    ref={slide6InputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0] || null;
+                      void onSlide6File(file);
+                      e.target.value = '';
+                    }}
+                  />
+                </div>
+              ) : (
+                <div className="grid h-28 place-items-center rounded-card border border-dashed border-border">
+                  <p className="px-6 text-center text-[13px] text-text-secondary">
+                    Slots appear after you import a TikTok carousel.
+                  </p>
+                </div>
+              )}
               {slide6Name ? (
                 <p className="mt-3 text-[12px] text-text-secondary">
-                  Slide 6: {slide6Name}{' '}
+                  Slide {promoSlot}: {slide6Name}{' '}
                   <button
                     type="button"
                     className="font-semibold text-[#B87A12] hover:underline"

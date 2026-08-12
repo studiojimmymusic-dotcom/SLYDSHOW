@@ -14,7 +14,6 @@ function parseMode(value: unknown): TikTokPostMode {
 function decodeDataUrl(dataUrl: string): Buffer {
   const match = /^data:([^;]+);base64,(.+)$/i.exec(dataUrl.trim());
   if (!match) {
-    // plain base64
     return Buffer.from(dataUrl.replace(/\s/g, ''), 'base64');
   }
   return Buffer.from(match[2], 'base64');
@@ -32,6 +31,7 @@ export async function POST(req: Request) {
         headSizePercent?: number;
         showHeadlineBox?: boolean;
       }>;
+      lastSlideDataUrl?: string;
       slide6DataUrl?: string;
       caption?: string;
       accountId?: string;
@@ -40,13 +40,17 @@ export async function POST(req: Request) {
     if (!body.imageUrls?.length || !body.caption) {
       return NextResponse.json({ error: 'Missing photos or caption' }, { status: 400 });
     }
-    if (!body.slide6DataUrl) {
-      return NextResponse.json({ error: 'Upload a screenshot for slide 6' }, { status: 400 });
+    const promoDataUrl = body.lastSlideDataUrl || body.slide6DataUrl;
+    if (!promoDataUrl) {
+      return NextResponse.json(
+        { error: 'Upload an app screenshot for the last slide' },
+        { status: 400 }
+      );
     }
 
-    const slide6Buffer = decodeDataUrl(body.slide6DataUrl);
-    if (slide6Buffer.length < 1000) {
-      return NextResponse.json({ error: 'Slide 6 image looks empty' }, { status: 400 });
+    const lastSlideBuffer = decodeDataUrl(promoDataUrl);
+    if (lastSlideBuffer.length < 1000) {
+      return NextResponse.json({ error: 'Last-slide image looks empty' }, { status: 400 });
     }
 
     const result = await publishSelectedPhotos(
@@ -56,7 +60,7 @@ export async function POST(req: Request) {
       body.accountId,
       parseMode(body.mode),
       {
-        slide6Buffer,
+        lastSlideBuffer,
         styles: body.styles,
       }
     );
