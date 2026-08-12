@@ -18,6 +18,47 @@ function firstUrl(list?: string[]): string | null {
   return list[0] || null;
 }
 
+function urlFromImageObj(value: unknown): string | null {
+  if (!value) return null;
+  if (typeof value === 'string' && /^https?:\/\//i.test(value)) return value;
+  if (typeof value !== 'object') return null;
+  const rec = value as Record<string, unknown>;
+  return (
+    firstUrl(rec.urlList as string[] | undefined) ||
+    firstUrl(rec.url_list as string[] | undefined) ||
+    urlFromImageObj(rec.cover) ||
+    urlFromImageObj(rec.originCover) ||
+    urlFromImageObj(rec.dynamicCover)
+  );
+}
+
+function extractSlideImages(videoData: Record<string, unknown>): string[] {
+  const imagePostInfo = videoData.imagePostInfo as
+    | { displayImages?: Array<{ urlList?: string[]; url_list?: string[] }> }
+    | undefined;
+
+  const fromCarousel = (imagePostInfo?.displayImages || [])
+    .map((img) => firstUrl(img.urlList) || firstUrl(img.url_list))
+    .filter((url): url is string => Boolean(url));
+
+  if (fromCarousel.length) return fromCarousel;
+
+  const item = (videoData.itemInfos || {}) as Record<string, unknown>;
+  const video = (item.video || item.videoInfo || {}) as Record<string, unknown>;
+  const coverUrl =
+    urlFromImageObj(video.cover) ||
+    urlFromImageObj(video.originCover) ||
+    urlFromImageObj(video.dynamicCover) ||
+    urlFromImageObj(item.cover) ||
+    urlFromImageObj(item.originCover);
+
+  return coverUrl ? [coverUrl] : [];
+}
+
+function extractCaption(videoData: Record<string, unknown>, item: Record<string, unknown>): string {
+  return String(item.text || item.desc || item.title || videoData.desc || '').trim();
+}
+
 function asNumber(value: unknown): number {
   const n = Number(value);
   return Number.isFinite(n) ? n : 0;
@@ -71,15 +112,9 @@ async function fetchEmbed(awemeId: string): Promise<SlideshowCandidate> {
   if (!state) throw new Error('TikTok embed page had no post data');
 
   const videoData = findVideoData(state, awemeId);
-  if (!videoData) throw new Error('Could not find photo carousel data in TikTok embed');
+  if (!videoData) throw new Error('Could not find TikTok post data in embed');
 
-  const imagePostInfo = videoData.imagePostInfo as
-    | { displayImages?: Array<{ urlList?: string[]; url_list?: string[] }> }
-    | undefined;
-
-  const images = (imagePostInfo?.displayImages || [])
-    .map((img) => firstUrl(img.urlList) || firstUrl(img.url_list))
-    .filter((url): url is string => Boolean(url));
+  const images = extractSlideImages(videoData);
 
   if (images.length < 1) {
     throw new Error('This TikTok post has no photo images to import');
@@ -88,7 +123,7 @@ async function fetchEmbed(awemeId: string): Promise<SlideshowCandidate> {
   const item = (videoData.itemInfos || {}) as Record<string, unknown>;
   const author = (videoData.authorInfos || {}) as Record<string, unknown>;
   const stats = (item.stats || item.statistics || videoData.itemStats || {}) as Record<string, unknown>;
-  const caption = String(item.text || item.desc || '');
+  const caption = extractCaption(videoData, item);
   const uniqueId = String(author.uniqueId || author.unique_id || '');
   const textExtra = Array.isArray(videoData.textExtra) ? videoData.textExtra : [];
   const hashtags = textExtra
@@ -141,6 +176,8 @@ async function fetchTikWm(sourceUrl: string, awemeId: string): Promise<Slideshow
       images?: string[];
       cover?: string;
       origin_cover?: string;
+      desc?: string;
+      description?: string;
       author?: { unique_id?: string };
     };
   };
@@ -158,7 +195,9 @@ async function fetchTikWm(sourceUrl: string, awemeId: string): Promise<Slideshow
     throw new Error('This TikTok post has no photo images to import');
   }
 
-  const caption = payload.data.title || '';
+  const caption = String(
+    payload.data.title || payload.data.desc || payload.data.description || ''
+  ).trim();
   const uniqueId = payload.data.author?.unique_id || '';
 
   return {
@@ -183,13 +222,16 @@ export async function fetchTikTokPhotoFromWeb(sourceUrl: string): Promise<Slides
     throw new Error(`Could not parse TikTok photo id from: ${sourceUrl}`);
   }
 
-  const canonical = `https://www.tiktok.com/@_/photo/${awemeId}`;
+  const canonicalPhoto = `https://www.tiktok.com/@_/photo/${awemeId}`;
+  const canonicalVideo = `https://www.tiktok.com/@_/video/${awemeId}`;
+  const resolvedUrl = sourceUrl.includes('tiktok.com') ? sourceUrl : canonicalPhoto;
   let lastError: unknown = null;
 
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
       log('tiktok-web', `Fetching embed ${awemeId} (attempt ${attempt}/3)`);
-      return await fetchEmbed(awemeId);
+      const fromEmbed = await fetchEmbed(awemeId);
+      return await enrichCandidateCaption(resolvedUrl, canonicalVideo, fromEmbed);
     } catch (error) {
       lastError = error;
       logError('tiktok-web', `embed attempt ${attempt} failed: ${error instanceof Error ? error.message : error}`);
@@ -198,11 +240,37 @@ export async function fetchTikTokPhotoFromWeb(sourceUrl: string): Promise<Slides
   }
 
   try {
-    return await fetchTikWm(sourceUrl.includes('tiktok.com') ? sourceUrl : canonical, awemeId);
+    const fromTikWm = await fetchTikWm(resolvedUrl.includes('tiktok.com') ? resolvedUrl : canonicalVideo, awemeId);
+    return fromTikWm;
   } catch (wmError) {
     logError('tiktok-web', wmError);
     throw new Error(
-      `Could not load TikTok carousel without ScrapTik. Embed: ${lastError instanceof Error ? lastError.message : lastError}. TikWM: ${wmError instanceof Error ? wmError.message : wmError}`
+      `Could not load TikTok post. Embed: ${lastError instanceof Error ? lastError.message : lastError}. TikWM: ${wmError instanceof Error ? wmError.message : wmError}`
     );
   }
+}
+
+async function enrichCandidateCaption(
+  primaryUrl: string,
+  fallbackUrl: string,
+  candidate: SlideshowCandidate
+): Promise<SlideshowCandidate> {
+  if (candidate.caption.trim().length >= 40) return candidate;
+
+  for (const url of [primaryUrl, fallbackUrl]) {
+    try {
+      const fromTikWm = await fetchTikWm(url, candidate.tiktokId);
+      if (fromTikWm.caption.trim().length > candidate.caption.trim().length) {
+        return {
+          ...candidate,
+          caption: fromTikWm.caption,
+          hashtags: fromTikWm.hashtags.length ? fromTikWm.hashtags : candidate.hashtags,
+        };
+      }
+    } catch {
+      // Try the next URL shape (/photo vs /video).
+    }
+  }
+
+  return candidate;
 }

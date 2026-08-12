@@ -31,7 +31,8 @@ type SlideText = { index: number; headline?: string; body: string; textSource?: 
 
 function slideHasOverlayCopy(slide: SlideText): boolean {
   if (slide.textSource === 'graphic' || slide.textSource === 'none') return false;
-  return Boolean(String(slide.headline || '').trim() || String(slide.body || '').trim());
+  const { title, body } = repairSlide(slide);
+  return Boolean(title.trim() || body.trim());
 }
 type Photo = { id: string; url: string; thumbUrl: string; description: string; query: string };
 type SlotPhoto = Photo | null;
@@ -53,6 +54,18 @@ function isTitleWord(word: string): boolean {
   if (/^[A-Z][a-z'’\-]*$/.test(word)) return true;
   if (/^\d+\.?$/.test(word)) return true;
   return false;
+}
+
+function isMetaOverlayText(text: string): boolean {
+  const normalized = flowText(text)
+    .replace(/[:：]\s*$/g, '')
+    .trim();
+  if (!normalized) return true;
+  return (
+    /^(?:read|see|check|open|view|tap)\s+caption$/i.test(normalized) ||
+    /^(?:read|see|check)\s+(?:the\s+)?(?:caption|description|bio)$/i.test(normalized) ||
+    /^(?:link|links)\s+in\s+bio$/i.test(normalized)
+  );
 }
 
 /** Fix OCR wrapping a title across Title + Body. */
@@ -89,7 +102,7 @@ function repairSlide(slide: SlideText): { title: string; body: string } {
 
   return {
     title: headline ? headline.toUpperCase() : '',
-    body,
+    body: body && !isMetaOverlayText(body) ? body : '',
   };
 }
 

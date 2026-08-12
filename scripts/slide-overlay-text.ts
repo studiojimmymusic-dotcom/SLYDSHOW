@@ -66,11 +66,37 @@ function normalizeOverlayLayout(layout: SlideLayout): SlideLayout {
   ({ headline, body } = rejoinSplitTitle(headline, body));
 
   if (!headline && body && /^(how to|why |what |nobody )/i.test(body) && body.length <= 90) {
-    return { headline: body.toUpperCase(), body: '' };
+    return stripMetaOverlay({ headline: body.toUpperCase(), body: '' });
   }
 
-  return {
+  return stripMetaOverlay({
     headline: headline ? headline.toUpperCase() : undefined,
+    body,
+  });
+}
+
+/** Pointer text like "Read Caption:" belongs in TikTok description, not slide copy. */
+function isMetaOverlayText(text: string): boolean {
+  const normalized = flowText(text)
+    .replace(/[:：]\s*$/g, '')
+    .trim();
+  if (!normalized) return true;
+  return /^(?:read|see|check|open|view|tap)\s+caption$/i.test(normalized) ||
+    /^(?:read|see|check)\s+(?:the\s+)?(?:caption|description|bio)$/i.test(normalized) ||
+    /^(?:link|links)\s+in\s+bio$/i.test(normalized) ||
+    /^follow\s+for\s+more$/i.test(normalized) ||
+    /^swipe\s+(?:left|up|for\s+more)$/i.test(normalized);
+}
+
+function stripMetaOverlay(layout: SlideLayout): SlideLayout {
+  let headline = layout.headline;
+  let body = layout.body || '';
+
+  if (body && isMetaOverlayText(body)) body = '';
+  if (headline && isMetaOverlayText(headline) && !body) headline = undefined;
+
+  return {
+    headline,
     body,
   };
 }
@@ -104,6 +130,7 @@ Rules:
 - If textSource is "overlay", extract exact overlay copy only:
   - headline = text inside a white pill/box OR the main white outlined title
   - body = secondary white outlined subtitle text
+- NEVER put pointer/instruction overlays in body or headline. Leave empty for text like "Read Caption", "See caption", "Link in bio", "Follow for more" — that content lives in the TikTok description, not slide copy.
 - Collapse wrapped title lines into one headline string. Never split one title across headline and body.`;
 
 export async function extractOverlayTextFromSlideImage(
@@ -163,7 +190,18 @@ export async function extractOverlayTextFromSlideImage(
   });
 
   if (!normalized.headline && !normalized.body) {
-    log(logTag, `Slide ${index}: overlay detected but no text read`);
+    log(logTag, `Slide ${index}: overlay detected but no usable copy`);
+    return { textSource: 'none', body: '' };
+  }
+
+  if (normalized.body && isMetaOverlayText(normalized.body)) {
+    normalized.body = '';
+  }
+  if (normalized.headline && isMetaOverlayText(normalized.headline) && !normalized.body) {
+    normalized.headline = undefined;
+  }
+  if (!normalized.headline && !normalized.body) {
+    log(logTag, `Slide ${index}: only pointer text (e.g. Read Caption) — skipped`);
     return { textSource: 'none', body: '' };
   }
 
