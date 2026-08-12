@@ -23,6 +23,11 @@ import {
   setActiveStudioProjectId,
   type StudioProject,
 } from './lib/studio-projects';
+import {
+  getLatestIntelligenceAnalysis,
+  getLocalPatternSeed,
+  saveIntelligenceAnalysis,
+} from './lib/content-patterns-client';
 
 type SlideText = { index: number; headline?: string; body: string };
 type Photo = { id: string; url: string; thumbUrl: string; description: string; query: string };
@@ -333,7 +338,7 @@ export default function StudioDeskPage() {
       setProjectTitle(project.title);
       window.history.replaceState({}, '', `/?project=${encodeURIComponent(project.id)}`);
       pushLog(`Saved project: ${project.title}`);
-      pushLog('Feeding Content Intelligence…');
+      pushLog('Learning what made this post work…');
       try {
         const feedRes = await fetch('/api/intelligence/feed', {
           method: 'POST',
@@ -354,16 +359,21 @@ export default function StudioDeskPage() {
         });
         const feed = await feedRes.json();
         if (!feedRes.ok) {
-          pushLog(feed.error || 'Could not feed Content Intelligence (check FELAR_AGENT_API_KEY)');
-        } else if (feed.created) {
-          pushLog('Queued for Content Intelligence analysis');
-        } else if (feed.requeued) {
-          pushLog('Updated Content Intelligence with on-screen text');
-        } else {
-          pushLog('Already in Content Intelligence');
+          pushLog(feed.error || 'Pattern analysis failed');
+        } else if (feed.analysis) {
+          saveIntelligenceAnalysis({
+            sourceUrl: url.trim(),
+            tiktokId: String(data.tiktokId || ''),
+            creator: String(data.creator || ''),
+            views: Number(data.views || 0),
+            ...feed.analysis,
+          });
+          pushLog(
+            `Pattern saved: ${feed.analysis.hookType || 'hook'} · ${feed.analysis.topic || 'topic'}`
+          );
         }
       } catch {
-        pushLog('Could not reach Content Intelligence');
+        pushLog('Pattern analysis skipped');
       }
       pushLog('Import complete');
     } catch (error) {
@@ -447,12 +457,30 @@ export default function StudioDeskPage() {
     if (busy) return;
     setBusy(true);
     setLogLines([]);
-    pushLog(`Writing original copy from what’s working…`);
+    pushLog('Writing original copy from saved patterns…');
     try {
+      const patterns = getLocalPatternSeed();
+      const latest = getLatestIntelligenceAnalysis();
       const res = await fetch('/api/intelligence/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
+        body: JSON.stringify({
+          patterns,
+          latestAnalysis: latest
+            ? {
+                hook: latest.hook,
+                hookType: latest.hookType,
+                topic: latest.topic,
+                slideStructure: latest.slideStructure,
+                narrativeArc: latest.narrativeArc,
+                emotionalAngle: latest.emotionalAngle,
+                textStyle: latest.textStyle,
+                cta: latest.cta,
+                whyItWorked: latest.whyItWorked,
+                felarAngle: latest.felarAngle,
+              }
+            : null,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Generate failed');
@@ -465,7 +493,11 @@ export default function StudioDeskPage() {
           ? `Original ${data.format}${data.hook ? ` — ${data.hook}` : ''}`
           : 'Original copy ready'
       );
-      pushLog('Copy is FELAR-original, not a remake of the imported post.');
+      pushLog(
+        patterns.sampleSize
+          ? `Seeded from ${patterns.sampleSize} saved import${patterns.sampleSize === 1 ? '' : 's'} in this browser.`
+          : 'Seeded from your latest import.'
+      );
     } catch (error) {
       pushLog(error instanceof Error ? error.message : 'Generate failed');
     } finally {
@@ -799,7 +831,7 @@ export default function StudioDeskPage() {
               <div>
                 <h2 className="font-sans text-[15px] font-semibold text-text-primary">Copy</h2>
                 <p className="mt-1 text-[13px] text-text-secondary">
-                  Import reads the original. Write original uses FELAR patterns instead of copying that post.
+                  Import learns the pattern. Write original invents new hooks from those patterns — not a copy of the post.
                 </p>
               </div>
               <Button
