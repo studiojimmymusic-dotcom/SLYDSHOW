@@ -17,7 +17,6 @@ import {
 import {
   clearActiveStudioProject,
   createStudioProjectFromImport,
-  getActiveStudioProject,
   getStudioProject,
   patchActiveStudioProject,
   setActiveStudioProjectId,
@@ -232,11 +231,14 @@ export default function StudioDeskPage() {
 
     const params = new URLSearchParams(window.location.search);
     const fromUrl = params.get('project') || '';
-    const project = (fromUrl && getStudioProject(fromUrl)) || getActiveStudioProject();
+    const project = fromUrl ? getStudioProject(fromUrl) : null;
     if (project) {
-      applyProject(project, `Restored project: ${project.title}`);
-      if (fromUrl && fromUrl === project.id) {
-        window.history.replaceState({}, '', `/?project=${encodeURIComponent(project.id)}`);
+      applyProject(project, `Opened project: ${project.title}`);
+    } else {
+      clearActiveStudioProject();
+      if (fromUrl) {
+        window.history.replaceState({}, '', '/');
+        setStatus('Project not found — start a new import');
       }
     }
     setHydrated(true);
