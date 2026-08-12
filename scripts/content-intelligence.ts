@@ -38,11 +38,13 @@ function slidesToTranscript(slides: SlideText[]): string {
     .map((slide) => {
       const headline = String(slide.headline || '').trim();
       const body = String(slide.body || '').trim();
+      if (!headline && !body) return '';
       const lines = [`Slide ${slide.index}`];
       if (headline) lines.push(headline);
       if (body) lines.push(body);
       return lines.join('\n');
     })
+    .filter(Boolean)
     .join('\n\n')
     .trim();
 }
@@ -87,7 +89,10 @@ export async function analyzeImportedSlideshow(input: {
 }): Promise<IntelligenceAnalysis> {
   const config = loadConfig();
   const transcript = slidesToTranscript(input.slides);
-  if (!transcript) throw new Error('No on-screen text to analyze');
+  const caption = String(input.caption || '').trim();
+  if (!transcript && !caption) {
+    throw new Error('No caption or overlay text to analyze');
+  }
 
   log('content-intelligence', 'Analyzing imported slideshow patterns…');
 
@@ -104,7 +109,7 @@ Saves: ${input.saves ?? 0}
 Caption: ${input.caption || '(none)'}
 Hashtags: ${(input.hashtags || []).join(', ') || '(none)'}
 On-screen slide text:
-${transcript}
+${transcript || '(none — text is part of the graphic, not a TikTok overlay)'}
 
 Brand: ${config.brand.description}
 Audience: ${config.brand.audience}

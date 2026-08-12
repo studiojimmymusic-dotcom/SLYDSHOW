@@ -353,7 +353,13 @@ function selectPins(pins: PinCandidate[], needed: number, preferPortrait: boolea
   return selected;
 }
 
-export async function downloadAndNormalize(imageUrl: string, outputPath: string, width: number, height: number): Promise<void> {
+export async function downloadAndNormalize(
+  imageUrl: string,
+  outputPath: string,
+  width: number,
+  height: number,
+  fit: 'cover' | 'contain' = 'cover'
+): Promise<void> {
   if (looksLikeUnsupportedUrl(imageUrl)) {
     throw new Error(`Unsupported image format URL: ${imageUrl}`);
   }
@@ -372,9 +378,11 @@ export async function downloadAndNormalize(imageUrl: string, outputPath: string,
   await sharp(buffer)
     .rotate()
     .resize(width, height, {
-      fit: 'cover',
+      fit,
       position: 'centre',
+      background: { r: 0, g: 0, b: 0, alpha: 1 },
     })
+    .flatten({ background: { r: 0, g: 0, b: 0 } })
     .jpeg({ quality: 90 })
     .toFile(outputPath);
 }

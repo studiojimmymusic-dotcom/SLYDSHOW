@@ -368,11 +368,9 @@ export default function StudioDeskPage() {
       setViews(Number(data.views || 0));
       const importedSlides = (data.slides || []) as SlideText[];
       setSlides(importedSlides);
-      const copies = buildEditorCopies(importedSlides);
-      const nextCaption = buildPasteCaption(copies);
-      setCaption(nextCaption);
+      setCaption('');
       setImportedSlides(cloneSlides(importedSlides));
-      setImportedCaption(nextCaption);
+      setImportedCaption('');
       setCopyIsOriginal(false);
       const originals = photosFromImportedImages(
         Array.isArray(data.slideImages) ? data.slideImages.map(String) : [],
@@ -402,7 +400,7 @@ export default function StudioDeskPage() {
         creator: String(data.creator || ''),
         views: Number(data.views || 0),
         slides: importedSlides,
-        caption: nextCaption,
+        caption: '',
         photos: pickerPhotos,
         selected: padSlots(originals, slotCount),
         searchQuery,
@@ -816,9 +814,9 @@ export default function StudioDeskPage() {
                     onClick={() => photo && clearSlot(i)}
                     className="overflow-hidden rounded-card border border-border bg-surface text-left"
                   >
-                    <div className="relative aspect-[9/16]">
+                    <div className="relative aspect-[9/16] bg-black">
                       {photo ? (
-                        <PhotoImg src={photo.thumbUrl} fallback={photo.url} className="h-full w-full object-cover" />
+                        <PhotoImg src={photo.thumbUrl} fallback={photo.url} className="h-full w-full object-contain" />
                       ) : (
                         <div className="grid h-full place-items-center font-mono text-[12px] text-text-tertiary">{i + 1}</div>
                       )}
@@ -832,9 +830,9 @@ export default function StudioDeskPage() {
                 onClick={() => slide6InputRef.current?.click()}
                 className="overflow-hidden rounded-card border border-dashed border-border bg-surface text-left"
               >
-                <div className="relative aspect-[9/16]">
+                <div className="relative aspect-[9/16] bg-black">
                   {slide6DataUrl ? (
-                    <img src={slide6DataUrl} alt="" className="h-full w-full object-cover" />
+                    <img src={slide6DataUrl} alt="" className="h-full w-full object-contain" />
                   ) : (
                     <div className="grid h-full place-items-center gap-1 px-2 text-center">
                       <span className="font-mono text-[12px] text-text-tertiary">{promoSlot}</span>
@@ -944,7 +942,7 @@ export default function StudioDeskPage() {
               <div>
                 <h2 className="font-sans text-[15px] font-semibold text-text-primary">Copy</h2>
                 <p className="mt-1 text-[13px] text-text-secondary">
-                  Import learns the pattern. Write original invents new hooks from those patterns — not a copy of the post.
+                  These photos already have text in the graphic. Write original only if you want new overlay copy — otherwise add text in TikTok.
                 </p>
               </div>
               <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
@@ -966,6 +964,10 @@ export default function StudioDeskPage() {
 
             {slides.length === 0 ? (
               <p className="mt-5 text-[13px] leading-5 text-text-tertiary">Slide text shows here after import.</p>
+            ) : !copyIsOriginal && slides.every((slide) => !String(slide.headline || '').trim() && !String(slide.body || '').trim()) ? (
+              <p className="mt-5 text-[13px] leading-5 text-text-tertiary">
+                No overlay text on this carousel. Use Write original, or leave it blank and add text in TikTok.
+              </p>
             ) : (
               <div className="mt-5 divide-y divide-border">
                 {slides.map((slide) => {

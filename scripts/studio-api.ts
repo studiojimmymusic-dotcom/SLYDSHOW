@@ -12,7 +12,6 @@ import {
   writeJson,
 } from './utils';
 import { findSlideshowFromSource } from './find-slideshows';
-import { extractTextFromSlideImage } from './remake';
 import {
   PhotoCandidate,
   downloadAndNormalize,
@@ -44,13 +43,6 @@ export interface AnalyzeResult {
   slideImages: string[];
 }
 
-async function downloadJpeg(url: string, outPath: string): Promise<void> {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`Failed to download ${url} (${res.status})`);
-  const buffer = Buffer.from(await res.arrayBuffer());
-  await sharp(buffer).jpeg({ quality: 90 }).toFile(outPath);
-}
-
 export async function analyzeTikTokUrl(
   sourceUrl: string,
   onProgress?: (message: string) => void
@@ -67,35 +59,15 @@ export async function analyzeTikTokUrl(
     throw new Error('This post has no slide images. Use a TikTok photo carousel URL.');
   }
 
-  const tmpDir = resolvePath('posts', `_analyze-${Date.now()}`);
-  ensureDir(tmpDir);
-
-  const slides: SlideText[] = [];
   const maxSlides = Math.min(5, source.slideImages.length);
-  progress(`Found ${source.slideImages.length} slides from @${source.creator} · reading ${maxSlides}`);
+  progress(`Found ${source.slideImages.length} photos from @${source.creator}`);
 
-  for (let i = 0; i < maxSlides; i++) {
-    progress(`Downloading slide ${i + 1}/${maxSlides}…`);
-    const out = path.join(tmpDir, `slide-${i + 1}.jpg`);
-    await downloadJpeg(source.slideImages[i], out);
-    progress(`Reading text on slide ${i + 1}/${maxSlides}…`);
-    const layout = await extractTextFromSlideImage(out, i + 1);
-    slides.push({
-      index: i + 1,
-      headline: layout.headline,
-      body: layout.body,
-    });
-    const preview = [layout.headline, layout.body].filter(Boolean).join(' · ').slice(0, 80);
-    progress(`Slide ${i + 1}/${maxSlides} ready${preview ? ` — ${preview}` : ''}`);
-  }
+  const slides: SlideText[] = Array.from({ length: maxSlides }, (_, i) => ({
+    index: i + 1,
+    body: '',
+  }));
 
-  try {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
-  } catch {
-    // keep temp if cleanup fails
-  }
-
-  progress('Carousel text ready');
+  progress('Photos ready');
   return {
     tiktokId: source.tiktokId,
     creator: source.creator,
@@ -183,7 +155,8 @@ export async function publishSelectedPhotos(
       imageUrls[i],
       outPath,
       config.overlays.outputWidth,
-      config.overlays.outputHeight
+      config.overlays.outputHeight,
+      'contain'
     );
     if (!fs.existsSync(outPath) || fs.statSync(outPath).size < 1000) {
       throw new Error(`Slide ${i + 1} did not download correctly`);
