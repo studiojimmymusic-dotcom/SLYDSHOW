@@ -131,6 +131,21 @@ function PhotoImg({
   );
 }
 
+function cloneSlides(slides: SlideText[]): SlideText[] {
+  return slides.map((slide) => ({
+    index: slide.index,
+    headline: slide.headline,
+    body: slide.body,
+  }));
+}
+
+function copyFingerprint(slides: SlideText[], caption: string): string {
+  return JSON.stringify({
+    slides: slides.map((s) => ({ i: s.index, h: s.headline || '', b: s.body })),
+    caption,
+  });
+}
+
 export default function StudioDeskPage() {
   const [url, setUrl] = useState('');
   const [status, setStatus] = useState('');
@@ -153,6 +168,9 @@ export default function StudioDeskPage() {
   const [projectId, setProjectId] = useState('');
   const [projectTitle, setProjectTitle] = useState('');
   const [hydrated, setHydrated] = useState(false);
+  const [importedSlides, setImportedSlides] = useState<SlideText[]>([]);
+  const [importedCaption, setImportedCaption] = useState('');
+  const [copyIsOriginal, setCopyIsOriginal] = useState(false);
 
   const slide6InputRef = useRef<HTMLInputElement>(null);
   const skipNextSave = useRef(false);
@@ -171,6 +189,13 @@ export default function StudioDeskPage() {
     setViews(project.views);
     setSlides(project.slides);
     setCaption(project.caption);
+    setImportedSlides(cloneSlides(project.importedSlides?.length ? project.importedSlides : project.slides));
+    setImportedCaption(project.importedCaption || project.caption);
+    setCopyIsOriginal(
+      Boolean(project.importedSlides?.length) &&
+        copyFingerprint(project.slides, project.caption) !==
+          copyFingerprint(project.importedSlides, project.importedCaption || project.caption)
+    );
     setSelected(project.selected);
     setPhotos(project.photos);
     setSlide6DataUrl(project.slide6DataUrl);
@@ -190,6 +215,9 @@ export default function StudioDeskPage() {
     setViews(0);
     setSlides([]);
     setCaption('');
+    setImportedSlides([]);
+    setImportedCaption('');
+    setCopyIsOriginal(false);
     setSelected([]);
     setPhotos([]);
     setSlide6DataUrl('');
@@ -257,6 +285,8 @@ export default function StudioDeskPage() {
       views,
       slides,
       caption,
+      importedSlides,
+      importedCaption,
       selected,
       photos,
       slide6DataUrl,
@@ -272,6 +302,8 @@ export default function StudioDeskPage() {
     views,
     slides,
     caption,
+    importedSlides,
+    importedCaption,
     selected,
     photos,
     slide6DataUrl,
@@ -316,6 +348,9 @@ export default function StudioDeskPage() {
       const copies = buildEditorCopies(importedSlides);
       const nextCaption = buildPasteCaption(copies);
       setCaption(nextCaption);
+      setImportedSlides(cloneSlides(importedSlides));
+      setImportedCaption(nextCaption);
+      setCopyIsOriginal(false);
       pushLog(
         `Need ${contentSlideCount(importedSlides.length)} photos + app screenshot as last slide.`
       );
@@ -459,8 +494,12 @@ export default function StudioDeskPage() {
     if (busy) return;
     setBusy(true);
     setLogLines([]);
-    pushLog('Writing original copy from saved patterns…');
+    pushLog(copyIsOriginal ? 'Regenerating original copy…' : 'Writing original copy from saved patterns…');
     try {
+      if (!importedSlides.length && slides.length) {
+        setImportedSlides(cloneSlides(slides));
+        setImportedCaption(caption);
+      }
       const patterns = getLocalPatternSeed();
       const latest = getLatestIntelligenceAnalysis();
       const res = await fetch('/api/intelligence/generate', {
@@ -490,6 +529,7 @@ export default function StudioDeskPage() {
       if (!nextSlides.length) throw new Error('No slides returned');
       setSlides(nextSlides);
       setCaption(String(data.caption || ''));
+      setCopyIsOriginal(true);
       pushLog(
         data.format
           ? `Original ${data.format}${data.hook ? ` — ${data.hook}` : ''}`
@@ -500,11 +540,23 @@ export default function StudioDeskPage() {
           ? `Seeded from ${patterns.sampleSize} saved import${patterns.sampleSize === 1 ? '' : 's'} in this browser.`
           : 'Seeded from your latest import.'
       );
+      pushLog('Don’t like it? Revert to the import or regenerate.');
     } catch (error) {
       pushLog(error instanceof Error ? error.message : 'Generate failed');
     } finally {
       setBusy(false);
     }
+  }
+
+  function revertImportedCopy() {
+    if (!importedSlides.length) {
+      pushLog('Nothing to revert — import a carousel first');
+      return;
+    }
+    setSlides(cloneSlides(importedSlides));
+    setCaption(importedCaption);
+    setCopyIsOriginal(false);
+    pushLog('Reverted to imported copy');
   }
 
   async function copyText(id: string, value: string) {
@@ -836,14 +888,21 @@ export default function StudioDeskPage() {
                   Import learns the pattern. Write original invents new hooks from those patterns — not a copy of the post.
                 </p>
               </div>
-              <Button
-                type="button"
-                variant="secondary"
-                disabled={busy}
-                onClick={() => void generateOriginal()}
-              >
-                Write original
-              </Button>
+              <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+                {copyIsOriginal ? (
+                  <Button type="button" variant="secondary" disabled={busy} onClick={revertImportedCopy}>
+                    Revert
+                  </Button>
+                ) : null}
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={busy || !slides.length}
+                  onClick={() => void generateOriginal()}
+                >
+                  {copyIsOriginal ? 'Regenerate' : 'Write original'}
+                </Button>
+              </div>
             </div>
 
             {slides.length === 0 ? (

@@ -19,6 +19,8 @@ export type StudioProject = {
   views: number;
   slides: StudioSlideText[];
   caption: string;
+  importedSlides: StudioSlideText[];
+  importedCaption: string;
   selected: StudioPhoto[];
   photos: StudioPhoto[];
   slide6DataUrl: string;
@@ -92,6 +94,13 @@ export function normalizeStudioProject(input: Partial<StudioProject> | null | un
         body: String(s?.body || ''),
       }))
     : [];
+  const importedSlides = Array.isArray(input?.importedSlides)
+    ? input!.importedSlides.map((s, i) => ({
+        index: Number(s?.index || i + 1),
+        headline: s?.headline ? String(s.headline) : undefined,
+        body: String(s?.body || ''),
+      }))
+    : [];
   const selected = (input?.selected || []).map(normalizePhoto).filter(Boolean) as StudioPhoto[];
   const photos = (input?.photos || []).map(normalizePhoto).filter(Boolean) as StudioPhoto[];
   const createdAt = String(input?.createdAt || nowIso());
@@ -109,6 +118,8 @@ export function normalizeStudioProject(input: Partial<StudioProject> | null | un
     views: Number(input?.views || 0) || 0,
     slides,
     caption: String(input?.caption || ''),
+    importedSlides,
+    importedCaption: String(input?.importedCaption || ''),
     selected,
     photos,
     slide6DataUrl: String(input?.slide6DataUrl || ''),
@@ -258,6 +269,8 @@ export function createStudioProjectFromImport(input: {
       views: input.views,
       slides: input.slides,
       caption: input.caption,
+      importedSlides: input.slides,
+      importedCaption: input.caption,
       photos: input.photos || [],
       selected: [],
       slide6DataUrl: '',
@@ -279,6 +292,8 @@ export function patchActiveStudioProject(
       | 'slide6Name'
       | 'searchQuery'
       | 'slides'
+      | 'importedSlides'
+      | 'importedCaption'
       | 'sourceUrl'
       | 'creator'
       | 'views'
