@@ -111,8 +111,9 @@ export default function SettingsPage() {
         throw new Error('Account IDs must be unique');
       }
 
-      const nextActive = cleaned.some((a) => a.id === activeAccountId)
-        ? activeAccountId
+      const trimmedActive = activeAccountId.trim();
+      const nextActive = cleaned.some((a) => a.id === trimmedActive)
+        ? trimmedActive
         : cleaned[0].id;
 
       const saved = saveLocalDeskSettings({
@@ -142,18 +143,46 @@ export default function SettingsPage() {
   }
 
   function updateAccount(index: number, patch: Partial<TikTokAccount>) {
-    setAccounts((prev) => prev.map((account, i) => (i === index ? { ...account, ...patch } : account)));
+    setAccounts((prev) => {
+      const previous = prev[index];
+      const nextAccounts = prev.map((account, i) => (i === index ? { ...account, ...patch } : account));
+
+      if (patch.id !== undefined) {
+        const oldId = previous?.id.trim() || '';
+        const newId = String(patch.id).trim();
+        setActiveAccountId((active) => {
+          // Keep default pointed at the same slot when editing its ID
+          if (active && oldId && active === oldId) return newId;
+          // Only auto-pick a default when this becomes the first/only connected account
+          if (!active) {
+            const filled = nextAccounts.filter((a) => a.id.trim());
+            if (filled.length === 1 && filled[0].id === newId) return newId;
+          }
+          return active;
+        });
+      }
+
+      return nextAccounts;
+    });
   }
 
   function clearAccount(index: number) {
     setAccounts((prev) => {
+      const clearedId = prev[index]?.id.trim() || '';
       const next = prev.map((account, i) => (i === index ? { ...EMPTY_SLOT } : account));
       const remaining = next.map((a) => a.id.trim()).filter(Boolean);
-      if (!remaining.includes(activeAccountId)) {
-        setActiveAccountId(remaining[0] || '');
-      }
+      setActiveAccountId((active) => {
+        if (active && active === clearedId) return remaining[0] || '';
+        if (active && remaining.includes(active)) return active;
+        return remaining[0] || '';
+      });
       return next;
     });
+  }
+
+  function setDefaultAccount(id: string) {
+    const trimmed = id.trim();
+    if (trimmed) setActiveAccountId(trimmed);
   }
 
   const connected = accounts.filter((a) => a.id.trim()).length;
@@ -274,16 +303,19 @@ export default function SettingsPage() {
                     />
                   </label>
                   {filled ? (
-                    <label className="flex cursor-pointer items-center gap-2.5 pt-1">
-                      <input
-                        type="radio"
-                        name="default-account"
-                        checked={activeAccountId === account.id.trim()}
-                        onChange={() => setActiveAccountId(account.id.trim())}
-                        className="size-4 accent-[var(--felar-accent)]"
-                      />
-                      <span className="text-[13px] text-text-secondary">Default for Share</span>
-                    </label>
+                    <div className="flex items-center gap-2.5 pt-1">
+                      {activeAccountId === account.id.trim() ? (
+                        <span className="text-[13px] font-medium text-text-primary">Default for Share</span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setDefaultAccount(account.id)}
+                          className="text-[13px] font-semibold text-[#B87A12] hover:underline"
+                        >
+                          Make default for Share
+                        </button>
+                      )}
+                    </div>
                   ) : null}
                 </div>
               </section>
