@@ -1,6 +1,7 @@
 'use client';
 
 import { FormEvent, useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
 import { DeskShell } from './components/desk-shell';
 import { Button, fieldClassName } from './components/ui';
 import { readNdjsonStream } from './lib/ndjson';
@@ -13,6 +14,15 @@ import {
   fileToSlideDataUrl,
   totalSlideCount,
 } from './lib/slide-style';
+import {
+  clearActiveStudioProject,
+  createStudioProjectFromImport,
+  getActiveStudioProject,
+  getStudioProject,
+  patchActiveStudioProject,
+  setActiveStudioProjectId,
+  type StudioProject,
+} from './lib/studio-projects';
 
 type SlideText = { index: number; headline?: string; body: string };
 type Photo = { id: string; url: string; thumbUrl: string; description: string; query: string };
@@ -136,12 +146,57 @@ export default function StudioDeskPage() {
   const [accountId, setAccountId] = useState('');
   const [shareMode, setShareMode] = useState<ShareMode>('inbox');
   const [logLines, setLogLines] = useState<string[]>([]);
+  const [projectId, setProjectId] = useState('');
+  const [projectTitle, setProjectTitle] = useState('');
+  const [hydrated, setHydrated] = useState(false);
 
   const slide6InputRef = useRef<HTMLInputElement>(null);
+  const skipNextSave = useRef(false);
 
   function pushLog(message: string) {
     setStatus(message);
     setLogLines((prev) => [...prev.slice(-40), message]);
+  }
+
+  function applyProject(project: StudioProject, note?: string) {
+    skipNextSave.current = true;
+    setProjectId(project.id);
+    setProjectTitle(project.title);
+    setUrl(project.sourceUrl);
+    setCreator(project.creator);
+    setViews(project.views);
+    setSlides(project.slides);
+    setCaption(project.caption);
+    setSelected(project.selected);
+    setPhotos(project.photos);
+    setSlide6DataUrl(project.slide6DataUrl);
+    setSlide6Name(project.slide6Name);
+    setSearchQuery(project.searchQuery);
+    setActiveStudioProjectId(project.id);
+    if (note) pushLog(note);
+  }
+
+  function startBlankProject() {
+    skipNextSave.current = true;
+    clearActiveStudioProject();
+    setProjectId('');
+    setProjectTitle('');
+    setUrl('');
+    setCreator('');
+    setViews(0);
+    setSlides([]);
+    setCaption('');
+    setSelected([]);
+    setPhotos([]);
+    setSlide6DataUrl('');
+    setSlide6Name('');
+    setSearchQuery('');
+    setPosted('');
+    setLogLines([]);
+    setStatus('New project — paste a TikTok photo URL');
+    if (typeof window !== 'undefined') {
+      window.history.replaceState({}, '', '/');
+    }
   }
 
   useEffect(() => {
@@ -152,25 +207,70 @@ export default function StudioDeskPage() {
       if (local.tiktokPostMode === 'zernio' || local.tiktokPostMode === 'inbox') {
         setShareMode(local.tiktokPostMode);
       }
-      return;
+    } else {
+      void (async () => {
+        try {
+          const res = await fetch('/api/settings');
+          const data = await res.json();
+          if (!res.ok) return;
+          const list = (data.accounts || []) as TikTokAccount[];
+          setAccounts(list);
+          setAccountId(data.activeAccountId || list[0]?.id || '');
+          if (data.tiktokPostMode === 'zernio' || data.tiktokPostMode === 'inbox') {
+            setShareMode(data.tiktokPostMode);
+          }
+        } catch {
+          // keep empty — Share will surface the settings error
+        }
+      })();
     }
 
-    void (async () => {
-      try {
-        const res = await fetch('/api/settings');
-        const data = await res.json();
-        if (!res.ok) return;
-        const list = (data.accounts || []) as TikTokAccount[];
-        setAccounts(list);
-        setAccountId(data.activeAccountId || list[0]?.id || '');
-        if (data.tiktokPostMode === 'zernio' || data.tiktokPostMode === 'inbox') {
-          setShareMode(data.tiktokPostMode);
-        }
-      } catch {
-        // keep empty — Share will surface the settings error
+    const params = new URLSearchParams(window.location.search);
+    const fromUrl = params.get('project') || '';
+    const project = (fromUrl && getStudioProject(fromUrl)) || getActiveStudioProject();
+    if (project) {
+      applyProject(project, `Restored project: ${project.title}`);
+      if (fromUrl && fromUrl === project.id) {
+        window.history.replaceState({}, '', `/?project=${encodeURIComponent(project.id)}`);
       }
-    })();
+    }
+    setHydrated(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!hydrated || !projectId) return;
+    if (skipNextSave.current) {
+      skipNextSave.current = false;
+      return;
+    }
+    const saved = patchActiveStudioProject({
+      sourceUrl: url,
+      creator,
+      views,
+      slides,
+      caption,
+      selected,
+      photos,
+      slide6DataUrl,
+      slide6Name,
+      searchQuery,
+    });
+    if (saved) setProjectTitle(saved.title);
+  }, [
+    hydrated,
+    projectId,
+    url,
+    creator,
+    views,
+    slides,
+    caption,
+    selected,
+    photos,
+    slide6DataUrl,
+    slide6Name,
+    searchQuery,
+  ]);
 
   const photoSlots = slides.length ? contentSlideCount(slides.length) : 0;
   const totalSlots = photoSlots ? totalSlideCount(photoSlots) : 0;
@@ -190,6 +290,9 @@ export default function StudioDeskPage() {
     setSlide6DataUrl('');
     setSlide6Name('');
     setLogLines([]);
+    skipNextSave.current = true;
+    setProjectId('');
+    setProjectTitle('');
 
     pushLog('Starting import…');
     try {
@@ -204,12 +307,32 @@ export default function StudioDeskPage() {
       const importedSlides = (data.slides || []) as SlideText[];
       setSlides(importedSlides);
       const copies = buildEditorCopies(importedSlides);
-      setCaption(buildPasteCaption(copies));
+      const nextCaption = buildPasteCaption(copies);
+      setCaption(nextCaption);
       pushLog(
         `Need ${contentSlideCount(importedSlides.length)} photos + app screenshot as last slide.`
       );
       pushLog('Finding studio photos…');
-      await loadPhotos({ replace: true, exclude: [], query: searchQuery, keepBusy: true });
+      const importedPhotos = await loadPhotos({
+        replace: true,
+        exclude: [],
+        query: searchQuery,
+        keepBusy: true,
+      });
+      const project = createStudioProjectFromImport({
+        sourceUrl: url.trim(),
+        creator: String(data.creator || ''),
+        views: Number(data.views || 0),
+        slides: importedSlides,
+        caption: nextCaption,
+        photos: importedPhotos,
+        searchQuery,
+      });
+      skipNextSave.current = true;
+      setProjectId(project.id);
+      setProjectTitle(project.title);
+      window.history.replaceState({}, '', `/?project=${encodeURIComponent(project.id)}`);
+      pushLog(`Saved project: ${project.title}`);
       pushLog('Import complete');
     } catch (error) {
       pushLog(error instanceof Error ? error.message : 'Analyze failed');
@@ -230,7 +353,7 @@ export default function StudioDeskPage() {
     exclude?: string[];
     query?: string;
     keepBusy?: boolean;
-  }) {
+  }): Promise<Photo[]> {
     const replace = opts?.replace ?? false;
     const query = (opts?.query ?? searchQuery).trim();
     const exclude =
@@ -255,8 +378,10 @@ export default function StudioDeskPage() {
         replace ? next : [...prev, ...next.filter((p) => !prev.some((x) => x.id === p.id))]
       );
       pushLog(next.length ? `${next.length} photos ready` : 'No photos for that search');
+      return next;
     } catch (error) {
       pushLog(error instanceof Error ? error.message : 'Photo search failed');
+      return [];
     } finally {
       if (!opts?.keepBusy) setBusy(false);
     }
@@ -421,8 +546,30 @@ export default function StudioDeskPage() {
         {posted ? <p className="rounded-xl border border-border bg-background px-5 py-3 text-[14px] text-success">{posted}</p> : null}
 
         <div>
-          <h1 className="font-display text-[28px] font-medium tracking-tight text-text-primary">Studio</h1>
-          <p className="mt-1 text-[14px] text-text-secondary">Pick photos, upload your app screenshot as the last slide, then Share. Add the text in TikTok.</p>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h1 className="font-display text-[28px] font-medium tracking-tight text-text-primary">Studio</h1>
+              <p className="mt-1 text-[14px] text-text-secondary">
+                Pick photos, upload your app screenshot as the last slide, then Share. Add the text in TikTok.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {projectId ? (
+                <p className="max-w-[220px] truncate text-[12px] text-text-secondary" title={projectTitle}>
+                  Saved · {projectTitle || 'Project'}
+                </p>
+              ) : null}
+              <Link
+                href="/projects"
+                className="rounded-lg border border-border bg-background px-3 py-2 text-[13px] font-medium text-text-secondary hover:text-text-primary"
+              >
+                Projects
+              </Link>
+              <Button type="button" variant="secondary" onClick={startBlankProject} disabled={busy}>
+                New project
+              </Button>
+            </div>
+          </div>
         </div>
 
         <div className="flex gap-2">
