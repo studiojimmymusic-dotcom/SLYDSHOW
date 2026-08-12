@@ -249,9 +249,21 @@ export async function renderOverlayToFile(
   outputPath: string,
   style?: Partial<SlideTextStyle>
 ): Promise<void> {
-  const buffer = await renderOverlayToBuffer(imageInput, layout, style);
+  const config = loadConfig().overlays;
+  const { headFont, bodyFont } = overlayFonts(config);
+  const svg = buildOverlaySvg(layout, config, headFont, bodyFont, style);
+
   ensureDir(path.dirname(outputPath));
-  fs.writeFileSync(outputPath, buffer);
+  const pipeline = sharp(imageInput)
+    .rotate()
+    .resize(config.outputWidth, config.outputHeight, { fit: 'cover', position: 'centre' })
+    .composite([{ input: Buffer.from(svg), top: 0, left: 0 }]);
+
+  if (outputPath.toLowerCase().endsWith('.png')) {
+    await pipeline.png().toFile(outputPath);
+  } else {
+    await pipeline.jpeg({ quality: 92 }).toFile(outputPath);
+  }
 }
 
 export async function addOverlay(
