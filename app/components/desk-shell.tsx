@@ -13,6 +13,19 @@ function IconImage() {
   );
 }
 
+function IconPosts() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 function IconSettings() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
@@ -33,6 +46,7 @@ function IconSettings() {
 
 const NAV = [
   { href: '/', label: 'Studio', icon: IconImage },
+  { href: '/posts', label: 'Posts', icon: IconPosts },
   { href: '/settings', label: 'Settings', icon: IconSettings },
 ];
 

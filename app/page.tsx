@@ -343,10 +343,10 @@ export default function StudioDeskPage() {
         pushLog('Saved as Zernio draft (not sent to TikTok yet).');
       } else {
         setPosted(
-          `Sent to @${accountLabel}. Open TikTok → Inbox → System notifications → tap the upload. Not Profile → Drafts.`
+          `Sent to @${accountLabel}. Open TikTok → Inbox → System notifications. Missing it? Retry from Posts.`
         );
         pushLog(`Creator Inbox upload accepted${data.title ? ` — "${data.title}"` : ''}`);
-        pushLog('If nothing shows: update TikTok app, force-close it, and clear old pending API uploads (max 5/day).');
+        pushLog('If nothing shows: open Posts → Retry inbox, or update TikTok and clear old pending uploads (max 5/day).');
         if (data.platformPostId) pushLog(`TikTok publish id: ${data.platformPostId}`);
       }
     } catch (error) {
