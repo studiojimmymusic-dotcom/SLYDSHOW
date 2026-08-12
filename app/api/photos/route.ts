@@ -3,8 +3,8 @@ import { listStudioPhotos } from '../../../scripts/studio-api';
 export const runtime = 'nodejs';
 export const maxDuration = 120;
 
-function encode(obj: unknown): Uint8Array {
-  return new TextEncoder().encode(`${JSON.stringify(obj)}\n`);
+function encode(obj: unknown): Buffer {
+  return Buffer.from(`${JSON.stringify(obj)}\n`, 'utf8');
 }
 
 export async function POST(req: Request) {
