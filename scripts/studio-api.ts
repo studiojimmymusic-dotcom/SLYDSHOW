@@ -38,6 +38,22 @@ async function downloadSlideToFile(url: string, outPath: string): Promise<void> 
   await sharp(buffer).rotate().jpeg({ quality: 90 }).toFile(outPath);
 }
 
+/** Keep TikTok caption + hashtags exactly as imported — no FELAR copy injected. */
+export function formatSourceCaption(caption: string, hashtags: string[] = []): string {
+  let text = String(caption || '').trim();
+  const tags = (hashtags || [])
+    .map((tag) => String(tag || '').replace(/^#/, '').trim())
+    .filter(Boolean);
+
+  if (!tags.length) return text;
+
+  const missing = tags.filter((tag) => !new RegExp(`#${tag}\\b`, 'i').test(text));
+  if (!missing.length) return text;
+
+  const suffix = missing.map((tag) => `#${tag}`).join(' ');
+  return text ? `${text} ${suffix}` : suffix;
+}
+
 export interface AnalyzeResult {
   tiktokId: string;
   creator: string;
@@ -102,6 +118,7 @@ export async function analyzeTikTokUrl(
   }
 
   progress('Photos ready');
+  const importedCaption = formatSourceCaption(source.caption || '', source.hashtags || []);
   return {
     tiktokId: source.tiktokId,
     creator: source.creator,
@@ -110,8 +127,8 @@ export async function analyzeTikTokUrl(
     comments: source.comments,
     shares: source.shares,
     saves: source.saves,
-    caption: '',
-    sourceCaption: source.caption || '',
+    caption: importedCaption,
+    sourceCaption: importedCaption,
     hashtags: source.hashtags || [],
     slides,
     slideImages: slideUrls,

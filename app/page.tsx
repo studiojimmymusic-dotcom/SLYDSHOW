@@ -9,7 +9,6 @@ import { loadLocalDeskSettings } from './lib/desk-settings-client';
 import {
   EditorSlideCopy,
   FELAR_CTA_SLIDE,
-  buildPasteCaption,
   contentSlideCount,
   fileToSlideDataUrl,
   totalSlideCount,
@@ -373,10 +372,11 @@ export default function StudioDeskPage() {
       setCreator(String(data.creator || ''));
       setViews(Number(data.views || 0));
       const importedSlides = (data.slides || []) as SlideText[];
+      const importedCaptionText = String(data.caption || data.sourceCaption || '').trim();
       setSlides(importedSlides);
-      setCaption('');
+      setCaption(importedCaptionText);
       setImportedSlides(cloneSlides(importedSlides));
-      setImportedCaption('');
+      setImportedCaption(importedCaptionText);
       setCopyIsOriginal(false);
       const originals = photosFromImportedImages(
         Array.isArray(data.slideImages) ? data.slideImages.map(String) : [],
@@ -406,7 +406,7 @@ export default function StudioDeskPage() {
         creator: String(data.creator || ''),
         views: Number(data.views || 0),
         slides: importedSlides,
-        caption: '',
+        caption: importedCaptionText,
         photos: pickerPhotos,
         selected: padSlots(originals, slotCount),
         searchQuery,
@@ -430,7 +430,7 @@ export default function StudioDeskPage() {
             comments: data.comments,
             shares: data.shares,
             saves: data.saves,
-            caption: data.sourceCaption,
+            caption: importedCaptionText,
             hashtags: data.hashtags,
             slides: importedSlides,
           }),
@@ -643,7 +643,7 @@ export default function StudioDeskPage() {
       body: c.body,
     }));
 
-    const captionPayload = caption.trim() || buildPasteCaption(copies);
+    const captionPayload = caption.trim();
 
     setBusy(true);
     setLogLines([]);
@@ -1027,21 +1027,24 @@ export default function StudioDeskPage() {
                   );
                 })}
 
-                {caption ? (
+                {slides.length > 0 ? (
                   <div className="py-3 last:pb-0">
                     <div className="mb-1.5 flex items-center justify-between gap-2">
                       <span className="font-mono text-[11px] text-text-tertiary">Caption</span>
-                      <button
-                        type="button"
-                        onClick={() => void copyText('caption', caption)}
-                        className="text-[12px] font-semibold text-[#B87A12] hover:underline"
-                      >
-                        {copied === 'caption' ? 'Copied' : 'Copy'}
-                      </button>
+                      {caption ? (
+                        <button
+                          type="button"
+                          onClick={() => void copyText('caption', caption)}
+                          className="text-[12px] font-semibold text-[#B87A12] hover:underline"
+                        >
+                          {copied === 'caption' ? 'Copied' : 'Copy'}
+                        </button>
+                      ) : null}
                     </div>
                     <textarea
                       value={caption}
                       onChange={(e) => setCaption(e.target.value)}
+                      placeholder="Imported caption appears here"
                       className="min-h-28 w-full resize-y rounded-card border border-border bg-background px-3 py-2.5 text-[13px] leading-5 text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
                     />
                   </div>

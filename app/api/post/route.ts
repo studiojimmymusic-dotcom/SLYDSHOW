@@ -30,8 +30,8 @@ export async function POST(req: Request) {
       accountId?: string;
       mode?: TikTokPostMode;
     };
-    if (!body.imageUrls?.length || !body.caption) {
-      return NextResponse.json({ error: 'Missing photos or caption' }, { status: 400 });
+    if (!body.imageUrls?.length) {
+      return NextResponse.json({ error: 'Missing photos' }, { status: 400 });
     }
     const promoDataUrl = body.lastSlideDataUrl || body.slide6DataUrl;
     if (!promoDataUrl) {
@@ -49,7 +49,7 @@ export async function POST(req: Request) {
     const result = await publishSelectedPhotos(
       body.imageUrls,
       body.slides || [],
-      body.caption,
+      body.caption ?? '',
       body.accountId,
       parseMode(body.mode),
       {
