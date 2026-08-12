@@ -1,4 +1,5 @@
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import * as dotenv from 'dotenv';
 
@@ -174,6 +175,11 @@ export function makePostTimestamp(date = new Date()): string {
 }
 
 export function resolvePath(...parts: string[]): string {
+  // Vercel serverless FS is read-only except /tmp
+  const runtimeRoots = new Set(['posts', 'data', 'exports']);
+  if (process.env.VERCEL && parts[0] && runtimeRoots.has(parts[0])) {
+    return path.join(os.tmpdir(), 'slydshow', ...parts);
+  }
   return path.join(ROOT, ...parts);
 }
 
