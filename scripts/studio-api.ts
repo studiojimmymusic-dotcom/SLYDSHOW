@@ -121,6 +121,7 @@ export async function publishSelectedPhotos(
   platformPostId: string;
   status: string;
   title: string;
+  sourceKeys: string[];
 }> {
   if (imageUrls.length !== 5) {
     throw new Error('Pick exactly 5 photos before posting');
@@ -130,15 +131,28 @@ export async function publishSelectedPhotos(
   const timestamp = makePostTimestamp();
   const postDir = resolvePath('posts', `studio-${timestamp}`);
   const imagesDir = path.join(postDir, 'images');
+
+  // Always start from an empty folder — never inherit leftovers from a prior share
+  if (fs.existsSync(postDir)) {
+    fs.rmSync(postDir, { recursive: true, force: true });
+  }
   ensureDir(imagesDir);
 
+  const sourceKeys = imageUrls.map(pinImageKey);
+  writeJson(path.join(postDir, 'sources.json'), { imageUrls, sourceKeys });
+
   for (let i = 0; i < imageUrls.length; i++) {
+    const outPath = path.join(imagesDir, `slide-${i + 1}-raw.jpg`);
+    log('studio-api', `Download slide ${i + 1}: ${sourceKeys[i]}`);
     await downloadAndNormalize(
       imageUrls[i],
-      path.join(imagesDir, `slide-${i + 1}-raw.jpg`),
+      outPath,
       config.overlays.outputWidth,
       config.overlays.outputHeight
     );
+    if (!fs.existsSync(outPath) || fs.statSync(outPath).size < 1000) {
+      throw new Error(`Slide ${i + 1} did not download correctly`);
+    }
   }
 
   const copy: SlideCopy = {
@@ -153,7 +167,7 @@ export async function publishSelectedPhotos(
   writeJson(path.join(postDir, 'copy.json'), copy);
 
   const record = await postToTikTok(copy, postDir, accountId, mode);
-  markPinsUsed(imageUrls.map(pinImageKey));
+  markPinsUsed(sourceKeys);
 
   return {
     postDir,
@@ -163,5 +177,6 @@ export async function publishSelectedPhotos(
     platformPostId: record.platformPostId ? String(record.platformPostId) : '',
     status: String(record.status || ''),
     title: String(record.title || ''),
+    sourceKeys,
   };
 }

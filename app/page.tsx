@@ -276,32 +276,44 @@ export default function StudioDeskPage() {
       pushLog('Add a TikTok account in Settings first');
       return;
     }
+    // Snapshot selection at click time so a later UI change can't swap photos mid-request
+    const imageUrls = selected.map((p) => p.url);
+    const imageIds = selected.map((p) => p.id);
+    const slidesPayload = slides.map((s) => {
+      const fixed = repairSlide(s);
+      return { headline: fixed.title || undefined, body: fixed.body };
+    });
+    const captionPayload = caption;
+    const modePayload = shareMode;
+    const accountPayload = accountId;
+
     setBusy(true);
     setLogLines([]);
-    const accountLabel = accounts.find((a) => a.id === accountId)?.label || accountId;
+    const accountLabel = accounts.find((a) => a.id === accountPayload)?.label || accountPayload;
     pushLog(
-      shareMode === 'zernio'
+      modePayload === 'zernio'
         ? `Saving Zernio draft for ${accountLabel}…`
         : `Sending TikTok inbox draft to ${accountLabel}…`
     );
+    pushLog(`Photos: ${imageIds.map((id) => id.split('/').pop() || id).join(', ')}`);
     try {
       const res = await fetch('/api/post', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          imageUrls: selected.map((p) => p.url),
-          slides: slides.map((s) => {
-            const fixed = repairSlide(s);
-            return { headline: fixed.title || undefined, body: fixed.body };
-          }),
-          caption,
-          accountId,
-          mode: shareMode,
+          imageUrls,
+          slides: slidesPayload,
+          caption: captionPayload,
+          accountId: accountPayload,
+          mode: modePayload,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Post failed');
-      if (shareMode === 'zernio') {
+      if (Array.isArray(data.sourceKeys) && data.sourceKeys.length) {
+        pushLog(`Uploaded: ${data.sourceKeys.map((k: string) => String(k).split('/').pop()).join(', ')}`);
+      }
+      if (modePayload === 'zernio') {
         setPosted(
           `Zernio draft saved for ${accountLabel}${data.zernioId ? ` (${data.zernioId})` : ''}. Open Zernio to review/publish.`
         );

@@ -364,6 +364,11 @@ export async function downloadAndNormalize(imageUrl: string, outputPath: string,
     throw new Error('Unsupported image format (heif/avif)');
   }
 
+  ensureDir(path.dirname(outputPath));
+  if (fs.existsSync(outputPath)) {
+    fs.unlinkSync(outputPath);
+  }
+
   await sharp(buffer)
     .rotate()
     .resize(width, height, {

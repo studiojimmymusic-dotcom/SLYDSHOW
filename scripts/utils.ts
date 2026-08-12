@@ -188,7 +188,11 @@ export function sleep(ms: number): Promise<void> {
 }
 
 export function makePostTimestamp(date = new Date()): string {
-  return date.toISOString().replace(/[:.]/g, '-').slice(0, 16);
+  // Include seconds + random suffix so rapid shares never reuse the same folder
+  // (Vercel /tmp is warm across requests; minute-level stamps caused stale images).
+  const iso = date.toISOString().replace(/[:.]/g, '-');
+  const rand = Math.random().toString(36).slice(2, 8);
+  return `${iso.slice(0, 19)}-${rand}`;
 }
 
 export function resolvePath(...parts: string[]): string {
