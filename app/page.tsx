@@ -11,7 +11,6 @@ import {
   EditorSlideStyle,
   FELAR_SLIDE6,
   buildPasteCaption,
-  extractHashtags,
   fileToSlideDataUrl,
   makeDefaultStyles,
 } from './lib/slide-style';
@@ -125,7 +124,6 @@ export default function StudioDeskPage() {
   const [views, setViews] = useState(0);
   const [slides, setSlides] = useState<SlideText[]>([]);
   const [caption, setCaption] = useState('');
-  const [captionHashtags, setCaptionHashtags] = useState<string[]>([]);
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [selected, setSelected] = useState<Photo[]>([]);
   const [slide6DataUrl, setSlide6DataUrl] = useState('');
@@ -213,10 +211,8 @@ export default function StudioDeskPage() {
       setViews(Number(data.views || 0));
       const importedSlides = (data.slides || []) as SlideText[];
       setSlides(importedSlides);
-      const tags = extractHashtags(String(data.caption || ''));
-      setCaptionHashtags(tags);
       const copies = buildEditorCopies(importedSlides);
-      setCaption(buildPasteCaption(copies, { hashtags: tags }));
+      setCaption(buildPasteCaption(copies));
       pushLog('Finding studio photos…');
       await loadPhotos({ replace: true, exclude: [], query: searchQuery, keepBusy: true });
       pushLog('Import complete');
@@ -294,8 +290,8 @@ export default function StudioDeskPage() {
     }
   }
 
-  function syncCaptionFromCopies(copies: EditorSlideCopy[], tags = captionHashtags) {
-    setCaption(buildPasteCaption(copies, { hashtags: tags }));
+  function syncCaptionFromCopies(copies: EditorSlideCopy[]) {
+    setCaption(buildPasteCaption(copies));
   }
 
   function openEditor() {
@@ -336,8 +332,7 @@ export default function StudioDeskPage() {
       body: c.body,
     }));
     const stylesPayload = editorStyles.slice(0, 6);
-    const captionPayload =
-      caption.trim() || buildPasteCaption(editorCopies, { hashtags: captionHashtags });
+    const captionPayload = caption.trim() || buildPasteCaption(editorCopies);
     const modePayload = shareMode;
     const accountPayload = accountId;
     const slide6Payload = slide6DataUrl;

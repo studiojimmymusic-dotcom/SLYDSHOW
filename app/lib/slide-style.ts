@@ -28,21 +28,17 @@ export function makeDefaultStyles(count = 6): EditorSlideStyle[] {
   return Array.from({ length: count }, () => ({ ...DEFAULT_SLIDE_STYLE }));
 }
 
-export function extractHashtags(text: string): string[] {
-  return [...new Set((String(text || '').match(/#[A-Za-z0-9_]+/g) || []))];
-}
-
 /**
  * Caption for copy-paste into TikTok:
  * TITLE (ALL CAPS)
  * body
  *
  * (blank line between slides)
- * then FELAR CTA + hashtags.
+ * then FELAR CTA only — no hashtags, no imported caption.
  */
 export function buildPasteCaption(
   copies: EditorSlideCopy[],
-  opts?: { hashtags?: string[]; includeCta?: boolean }
+  opts?: { includeCta?: boolean }
 ): string {
   const slideBlocks = copies
     .map((copy) => {
@@ -64,8 +60,6 @@ export function buildPasteCaption(
   if (opts?.includeCta !== false) {
     parts.push('Start selling beats on FELAR → usefelar.com');
   }
-  const tags = (opts?.hashtags || []).filter(Boolean);
-  if (tags.length) parts.push([...new Set(tags)].join(' '));
   return parts.join('\n\n');
 }
 

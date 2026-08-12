@@ -12,7 +12,7 @@ import {
   writeJson,
 } from './utils';
 import { findSlideshowFromSource } from './find-slideshows';
-import { extractTextFromSlideImage, appendFelarCta } from './remake';
+import { extractTextFromSlideImage } from './remake';
 import {
   PhotoCandidate,
   downloadAndNormalize,
@@ -93,7 +93,7 @@ export async function analyzeTikTokUrl(
     tiktokId: source.tiktokId,
     creator: source.creator,
     views: source.views,
-    caption: appendFelarCta(source.caption),
+    caption: '',
     slides,
   };
 }
