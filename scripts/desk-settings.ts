@@ -88,14 +88,11 @@ export function resolveTikTokPostMode(override?: TikTokPostMode): TikTokPostMode
 }
 
 export function resolvePostAccountId(override?: string): string {
-  const settings = loadDeskSettings();
   const requested = String(override || '').trim();
-  if (requested) {
-    if (!settings.accounts.some((a) => a.id === requested)) {
-      throw new Error('That TikTok account is not connected in Settings');
-    }
-    return requested;
-  }
+  // Client Settings persist in the browser on Vercel; trust the account ID from the request.
+  if (requested) return requested;
+
+  const settings = loadDeskSettings();
   if (settings.activeAccountId) return settings.activeAccountId;
   const envId = process.env.ZERNIO_TIKTOK_ACCOUNT_ID?.trim();
   if (envId) return envId;

@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useState } from 'react';
 import { DeskShell } from './components/desk-shell';
 import { Button, fieldClassName } from './components/ui';
 import { readNdjsonStream } from './lib/ndjson';
+import { loadLocalDeskSettings } from './lib/desk-settings-client';
 
 type SlideText = { index: number; headline?: string; body: string };
 type Photo = {
@@ -113,6 +114,16 @@ export default function StudioDeskPage() {
   }
 
   useEffect(() => {
+    const local = loadLocalDeskSettings();
+    if (local?.accounts.length) {
+      setAccounts(local.accounts);
+      setAccountId(local.activeAccountId || local.accounts[0]?.id || '');
+      if (local.tiktokPostMode === 'zernio' || local.tiktokPostMode === 'inbox') {
+        setShareMode(local.tiktokPostMode);
+      }
+      return;
+    }
+
     void (async () => {
       try {
         const res = await fetch('/api/settings');

@@ -3,14 +3,14 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { DeskShell } from '../components/desk-shell';
 import { Button, fieldClassName } from '../components/ui';
-
-type TikTokAccount = { id: string; label: string };
-type TikTokPostMode = 'live' | 'inbox' | 'zernio';
-type DeskSettings = {
-  accounts: TikTokAccount[];
-  activeAccountId: string;
-  tiktokPostMode?: TikTokPostMode;
-};
+import {
+  loadLocalDeskSettings,
+  normalizeDeskSettings,
+  saveLocalDeskSettings,
+  type DeskSettings,
+  type TikTokAccount,
+  type TikTokPostMode,
+} from '../lib/desk-settings-client';
 
 const EMPTY_SLOT: TikTokAccount = { id: '', label: '' };
 
@@ -34,6 +34,13 @@ function snapshot(
   });
 }
 
+function applySettings(data: DeskSettings) {
+  const next = slotsFromAccounts(data.accounts || []);
+  const active = data.activeAccountId || data.accounts[0]?.id || '';
+  const mode = data.tiktokPostMode;
+  return { next, active, mode };
+}
+
 export default function SettingsPage() {
   const [accounts, setAccounts] = useState<TikTokAccount[]>([{ ...EMPTY_SLOT }, { ...EMPTY_SLOT }]);
   const [activeAccountId, setActiveAccountId] = useState('');
@@ -44,26 +51,34 @@ export default function SettingsPage() {
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
+    const local = loadLocalDeskSettings();
+    if (local?.accounts.length) {
+      const { next, active, mode } = applySettings(local);
+      setAccounts(next);
+      setActiveAccountId(active);
+      setTikTokPostMode(mode);
+      setSavedSnapshot(snapshot(next, active, mode));
+      setLoaded(true);
+      return;
+    }
+
     void (async () => {
       try {
         const res = await fetch('/api/settings');
         const data = (await res.json()) as DeskSettings & { error?: string };
         if (!res.ok) throw new Error(data.error || 'Failed to load settings');
-        const next = slotsFromAccounts(data.accounts || []);
-        const active = data.activeAccountId || data.accounts[0]?.id || '';
-        const mode: TikTokPostMode =
-          data.tiktokPostMode === 'live'
-            ? 'live'
-            : data.tiktokPostMode === 'zernio'
-              ? 'zernio'
-              : 'inbox';
+        const normalized = normalizeDeskSettings(data);
+        if (normalized.accounts.length) {
+          saveLocalDeskSettings(normalized);
+        }
+        const { next, active, mode } = applySettings(normalized);
         setAccounts(next);
         setActiveAccountId(active);
         setTikTokPostMode(mode);
         setSavedSnapshot(snapshot(next, active, mode));
-        setLoaded(true);
       } catch (error) {
         setStatus(error instanceof Error ? error.message : 'Failed to load settings');
+      } finally {
         setLoaded(true);
       }
     })();
@@ -100,30 +115,25 @@ export default function SettingsPage() {
         ? activeAccountId
         : cleaned[0].id;
 
-      const res = await fetch('/api/settings', {
+      const saved = saveLocalDeskSettings({
+        accounts: cleaned,
+        activeAccountId: nextActive,
+        tiktokPostMode,
+      });
+
+      // Best-effort local filesystem sync (works in local npm run, ephemeral on Vercel)
+      void fetch('/api/settings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          accounts: cleaned,
-          activeAccountId: nextActive,
-          tiktokPostMode,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Save failed');
+        body: JSON.stringify(saved),
+      }).catch(() => undefined);
 
-      const next = slotsFromAccounts(data.accounts as TikTokAccount[]);
-      const mode: TikTokPostMode =
-        data.tiktokPostMode === 'live'
-          ? 'live'
-          : data.tiktokPostMode === 'zernio'
-            ? 'zernio'
-            : 'inbox';
+      const { next, active, mode } = applySettings(saved);
       setAccounts(next);
-      setActiveAccountId(data.activeAccountId);
+      setActiveAccountId(active);
       setTikTokPostMode(mode);
-      setSavedSnapshot(snapshot(next, data.activeAccountId, mode));
-      setStatus('Saved');
+      setSavedSnapshot(snapshot(next, active, mode));
+      setStatus('Saved in this browser');
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Save failed');
     } finally {
@@ -162,7 +172,7 @@ export default function SettingsPage() {
         <div>
           <h1 className="font-display text-[28px] font-medium tracking-tight text-text-primary">Settings</h1>
           <p className="mt-1 text-[14px] text-text-secondary">
-            Connect accounts and choose how Share delivers to TikTok.
+            Connect up to two Zernio TikTok accounts. Settings are saved in this browser.
           </p>
         </div>
 
