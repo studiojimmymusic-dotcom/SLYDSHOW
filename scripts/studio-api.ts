@@ -107,12 +107,24 @@ export async function listStudioPhotos(
   return fetchPhotoCandidates(limit, excludeKeys, query, onProgress);
 }
 
+export type PublishSlideStyle = {
+  textPositionFromTop?: number;
+  maxWidthPercent?: number;
+  bodySizePercent?: number;
+  headSizePercent?: number;
+  showHeadlineBox?: boolean;
+};
+
 export async function publishSelectedPhotos(
   imageUrls: string[],
   slides: SlideLayout[],
   caption: string,
   accountId?: string,
-  mode: TikTokPostMode = 'inbox'
+  mode: TikTokPostMode = 'inbox',
+  opts?: {
+    slide6Buffer?: Buffer;
+    styles?: PublishSlideStyle[];
+  }
 ): Promise<{
   postDir: string;
   zernioId?: string;
@@ -126,20 +138,33 @@ export async function publishSelectedPhotos(
   if (imageUrls.length !== 5) {
     throw new Error('Pick exactly 5 photos before posting');
   }
+  if (!opts?.slide6Buffer?.length) {
+    throw new Error('Upload a screenshot for slide 6 before sharing');
+  }
+  if (slides.length < 6) {
+    throw new Error('Need text for all 6 slides');
+  }
 
   const config = loadConfig();
   const timestamp = makePostTimestamp();
   const postDir = resolvePath('posts', `studio-${timestamp}`);
   const imagesDir = path.join(postDir, 'images');
+  const finalDir = path.join(postDir, 'final');
 
   // Always start from an empty folder — never inherit leftovers from a prior share
   if (fs.existsSync(postDir)) {
     fs.rmSync(postDir, { recursive: true, force: true });
   }
   ensureDir(imagesDir);
+  ensureDir(finalDir);
 
   const sourceKeys = imageUrls.map(pinImageKey);
-  writeJson(path.join(postDir, 'sources.json'), { imageUrls, sourceKeys });
+  writeJson(path.join(postDir, 'sources.json'), {
+    imageUrls,
+    sourceKeys,
+    slideCount: 6,
+    hasSlide6Upload: true,
+  });
 
   for (let i = 0; i < imageUrls.length; i++) {
     const outPath = path.join(imagesDir, `slide-${i + 1}-raw.jpg`);
@@ -155,16 +180,43 @@ export async function publishSelectedPhotos(
     }
   }
 
+  const slide6Raw = path.join(imagesDir, 'slide-6-raw.jpg');
+  await sharp(opts.slide6Buffer)
+    .rotate()
+    .resize(config.overlays.outputWidth, config.overlays.outputHeight, {
+      fit: 'cover',
+      position: 'centre',
+    })
+    .jpeg({ quality: 92 })
+    .toFile(slide6Raw);
+  if (!fs.existsSync(slide6Raw) || fs.statSync(slide6Raw).size < 1000) {
+    throw new Error('Slide 6 screenshot did not save correctly');
+  }
+
+  const layouts = slides.slice(0, 6).map((layout) => ({
+    headline: layout.headline,
+    body: layout.body || '',
+  }));
+
+  const { renderOverlayToFile } = await import('./add-overlays');
+  for (let i = 0; i < 6; i++) {
+    const rawPath = path.join(imagesDir, `slide-${i + 1}-raw.jpg`);
+    const outPath = path.join(finalDir, `slide-${i + 1}.jpg`);
+    log('studio-api', `Burning text onto slide ${i + 1}`);
+    await renderOverlayToFile(rawPath, layouts[i], outPath, opts.styles?.[i]);
+  }
+
   const copy: SlideCopy = {
-    hook: slides[0]?.headline || slides[0]?.body || 'FELAR',
-    slides: slides.map((layout) =>
+    hook: layouts[0]?.headline || layouts[0]?.body || 'FELAR',
+    slides: layouts.map((layout) =>
       layout.headline ? `|||HEAD|||${layout.headline}|||BODY|||${layout.body}` : layout.body
     ),
-    layouts: slides,
+    layouts,
     caption,
     hookCategory: 'studio-dashboard',
   };
   writeJson(path.join(postDir, 'copy.json'), copy);
+  writeJson(path.join(postDir, 'styles.json'), opts.styles || []);
 
   const record = await postToTikTok(copy, postDir, accountId, mode);
   markPinsUsed(sourceKeys);

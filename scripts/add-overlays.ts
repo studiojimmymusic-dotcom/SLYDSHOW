@@ -6,6 +6,7 @@ import {
   OverlayConfig,
   SlideCopy,
   SlideLayout,
+  SlideTextStyle,
   ensureDir,
   loadConfig,
   log,
@@ -93,48 +94,65 @@ function centeredPath(font: LoadedFont, text: string, x: number, y: number, font
   return glyphPath.toPathData(2);
 }
 
-function buildOverlaySvg(layout: SlideLayout, config: OverlayConfig, font: LoadedFont): string {
+function buildOverlaySvg(
+  layout: SlideLayout,
+  config: OverlayConfig,
+  font: LoadedFont,
+  style?: Partial<SlideTextStyle>
+): string {
   const width = config.outputWidth;
   const height = config.outputHeight;
   const body = layout.body || '';
   const headline = layout.headline || '';
   const wordCount = body.replace(/\n/g, ' ').split(/\s+/).filter(Boolean).length;
 
-  let bodySizePercent = 0.05;
-  if (wordCount <= 6) bodySizePercent = 0.068;
-  else if (wordCount <= 14) bodySizePercent = 0.058;
+  let bodySizePercent = style?.bodySizePercent ?? 0.05;
+  if (style?.bodySizePercent == null) {
+    if (wordCount <= 6) bodySizePercent = 0.068;
+    else if (wordCount <= 14) bodySizePercent = 0.058;
+  }
 
   const bodySize = Math.round(width * bodySizePercent);
-  const headSize = Math.round(width * 0.046);
+  const headSize = Math.round(width * (style?.headSizePercent ?? 0.046));
   const strokeWidth = Math.max(14, Math.round(bodySize * Math.max(config.strokeWidthPercent, 0.28)));
   const bodyLineHeight = bodySize * 1.28;
   const headLineHeight = headSize * 1.7;
-  const bodyMaxWidth = width * config.maxWidthPercent;
-  const headMaxWidth = width * 0.82;
+  const maxWidthPercent = style?.maxWidthPercent ?? config.maxWidthPercent;
+  const bodyMaxWidth = width * maxWidthPercent;
+  const headMaxWidth = width * Math.min(0.92, maxWidthPercent);
+  const positionFromTop = style?.textPositionFromTop ?? config.textPositionFromTop;
+  const showHeadlineBox = style?.showHeadlineBox !== false;
 
   const bodyLines = wrapByWidth(font, body, bodySize, bodyMaxWidth);
-  const headLines = headline ? wrapByWidth(font, headline, headSize, headMaxWidth) : [];
+  const headLines = headline ? wrapByWidth(font, headline.toUpperCase(), headSize, headMaxWidth) : [];
 
-  const headlineTop = Math.round(height * 0.145);
+  const headlineTop = Math.round(height * Math.min(positionFromTop, 0.35));
   const bodyTop = headLines.length
     ? headlineTop + headLines.length * headLineHeight + Math.round(height * 0.04)
-    : Math.round(height * config.textPositionFromTop);
+    : Math.round(height * positionFromTop);
 
   const x = width / 2;
   const parts: string[] = [];
 
   headLines.forEach((line, i) => {
     const y = headlineTop + i * headLineHeight;
-    const textW = font.getAdvanceWidth(line, headSize);
-    const padX = headSize * 0.42;
-    const boxH = headSize * 1.48;
-    const boxW = Math.min(width * 0.92, textW + padX * 2);
-    const boxX = x - boxW / 2;
-    const boxY = y - headSize * 1.08;
-    parts.push(
-      `<rect x="${boxX.toFixed(1)}" y="${boxY.toFixed(1)}" width="${boxW.toFixed(1)}" height="${boxH.toFixed(1)}" rx="${boxH / 2}" ry="${boxH / 2}" fill="#FFFFFF"/>`
-    );
-    parts.push(`<path d="${centeredPath(font, line, x, y, headSize)}" fill="#111111"/>`);
+    if (showHeadlineBox) {
+      const textW = font.getAdvanceWidth(line, headSize);
+      const padX = headSize * 0.42;
+      const boxH = headSize * 1.48;
+      const boxW = Math.min(width * 0.92, textW + padX * 2);
+      const boxX = x - boxW / 2;
+      const boxY = y - headSize * 1.08;
+      parts.push(
+        `<rect x="${boxX.toFixed(1)}" y="${boxY.toFixed(1)}" width="${boxW.toFixed(1)}" height="${boxH.toFixed(1)}" rx="${boxH / 2}" ry="${boxH / 2}" fill="#FFFFFF"/>`
+      );
+      parts.push(`<path d="${centeredPath(font, line, x, y, headSize)}" fill="#111111"/>`);
+    } else {
+      const d = centeredPath(font, line, x, y, headSize);
+      parts.push(
+        `<path d="${d}" fill="${config.fontColor}" stroke="${config.strokeColor}" stroke-width="${strokeWidth}" stroke-linejoin="round" stroke-linecap="round" paint-order="stroke fill"/>`
+      );
+    }
   });
 
   bodyLines.forEach((line, i) => {
@@ -151,6 +169,37 @@ function buildOverlaySvg(layout: SlideLayout, config: OverlayConfig, font: Loade
 </svg>`;
 }
 
+export async function renderOverlayToFile(
+  imageInput: string | Buffer,
+  layout: SlideLayout,
+  outputPath: string,
+  style?: Partial<SlideTextStyle>
+): Promise<void> {
+  const config = loadConfig().overlays;
+  const fontPath = resolvePath(config.fontPath);
+  if (!fs.existsSync(fontPath)) {
+    throw new Error(`Font not found at ${fontPath}. Expected Montserrat font in fonts/`);
+  }
+
+  const fontBuffer = fs.readFileSync(fontPath);
+  const font = opentype.parse(
+    fontBuffer.buffer.slice(fontBuffer.byteOffset, fontBuffer.byteOffset + fontBuffer.byteLength)
+  );
+  const svg = buildOverlaySvg(layout, config, font, style);
+
+  ensureDir(path.dirname(outputPath));
+  const pipeline = sharp(imageInput)
+    .rotate()
+    .resize(config.outputWidth, config.outputHeight, { fit: 'cover', position: 'centre' })
+    .composite([{ input: Buffer.from(svg), top: 0, left: 0 }]);
+
+  if (outputPath.toLowerCase().endsWith('.png')) {
+    await pipeline.png().toFile(outputPath);
+  } else {
+    await pipeline.jpeg({ quality: 92 }).toFile(outputPath);
+  }
+}
+
 export async function addOverlay(
   imagePath: string,
   text: string,
@@ -158,24 +207,11 @@ export async function addOverlay(
   config: OverlayConfig,
   layout?: SlideLayout
 ): Promise<void> {
-  const fontPath = resolvePath(config.fontPath);
-  if (!fs.existsSync(fontPath)) {
-    throw new Error(`Font not found at ${fontPath}. Expected Montserrat-Bold.ttf in fonts/`);
-  }
-
-  const fontBuffer = fs.readFileSync(fontPath);
-  const font = opentype.parse(
-    fontBuffer.buffer.slice(fontBuffer.byteOffset, fontBuffer.byteOffset + fontBuffer.byteLength)
-  );
   const parsed = parseLayout(text, layout);
-  const svg = buildOverlaySvg(parsed, config, font);
-
-  ensureDir(path.dirname(outputPath));
-  await sharp(imagePath)
-    .resize(config.outputWidth, config.outputHeight, { fit: 'cover', position: 'centre' })
-    .composite([{ input: Buffer.from(svg), top: 0, left: 0 }])
-    .png()
-    .toFile(outputPath);
+  await renderOverlayToFile(imagePath, parsed, outputPath, {
+    textPositionFromTop: config.textPositionFromTop,
+    maxWidthPercent: config.maxWidthPercent,
+  });
 }
 
 export async function addOverlays(copy: SlideCopy, postDir: string): Promise<string[]> {

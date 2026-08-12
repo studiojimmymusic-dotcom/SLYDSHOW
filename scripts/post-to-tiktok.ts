@@ -141,16 +141,23 @@ export async function postToTikTok(
   const zernioOnlyDraft = mode === 'zernio';
   const tiktokInboxDraft = mode === 'inbox';
 
-  const slideTarget = config.pinterest.imagesPerPost || 5;
-  const overlayEnabled = config.overlays.enabled !== false;
-  const overlayPaths = Array.from({ length: slideTarget }, (_, i) =>
-    path.join(postDir, 'final', `slide-${i + 1}.png`)
-  ).filter((p) => fs.existsSync(p));
-  const rawPaths = Array.from({ length: slideTarget }, (_, i) =>
-    path.join(postDir, 'images', `slide-${i + 1}-raw.jpg`)
-  ).filter((p) => fs.existsSync(p));
+  const finalSlides: string[] = [];
+  for (let i = 1; i <= 12; i++) {
+    const png = path.join(postDir, 'final', `slide-${i}.png`);
+    const jpg = path.join(postDir, 'final', `slide-${i}.jpg`);
+    if (fs.existsSync(png)) finalSlides.push(png);
+    else if (fs.existsSync(jpg)) finalSlides.push(jpg);
+    else break;
+  }
+  const rawSlides: string[] = [];
+  for (let i = 1; i <= 12; i++) {
+    const raw = path.join(postDir, 'images', `slide-${i}-raw.jpg`);
+    if (!fs.existsSync(raw)) break;
+    rawSlides.push(raw);
+  }
 
-  const slidePaths = overlayEnabled && overlayPaths.length ? overlayPaths : rawPaths;
+  // Prefer burned-in overlay finals when present (studio editor / overlays enabled)
+  const slidePaths = finalSlides.length > 0 ? finalSlides : rawSlides;
 
   if (slidePaths.length === 0) {
     throw new Error('No photos found to upload');

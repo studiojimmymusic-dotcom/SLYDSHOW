@@ -27,6 +27,13 @@ const generalSans = localFont({
   display: 'swap',
 });
 
+const slideOverlay = localFont({
+  src: '../fonts/Montserrat-Bold.ttf',
+  variable: '--font-slide-overlay',
+  display: 'swap',
+  weight: '700',
+});
+
 export const metadata: Metadata = {
   title: 'SLYDSHOW',
   description: 'Remake TikTok photo carousels with studio photos.',
@@ -36,7 +43,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html
       lang="en"
-      className={`${fraunces.variable} ${jetbrainsMono.variable} ${generalSans.variable}`}
+      className={`${fraunces.variable} ${jetbrainsMono.variable} ${generalSans.variable} ${slideOverlay.variable}`}
     >
       <body className="h-screen overflow-hidden bg-surface font-sans text-text-primary antialiased">
         {children}

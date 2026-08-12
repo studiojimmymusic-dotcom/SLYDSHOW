@@ -75,7 +75,7 @@
     ]
   },
   "overlays": {
-    "enabled": false,
+    "enabled": true,
     "fontPath": "fonts/Montserrat-Bold.ttf",
     "fontColor": "#FFFFFF",
     "strokeColor": "#000000",

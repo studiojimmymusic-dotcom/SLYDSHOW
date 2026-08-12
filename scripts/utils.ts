@@ -63,6 +63,22 @@ export interface OverlayConfig {
   outputHeight: number;
 }
 
+export interface SlideTextStyle {
+  textPositionFromTop: number;
+  maxWidthPercent: number;
+  bodySizePercent: number;
+  headSizePercent: number;
+  showHeadlineBox: boolean;
+}
+
+export const DEFAULT_SLIDE_STYLE: SlideTextStyle = {
+  textPositionFromTop: 0.2,
+  maxWidthPercent: 0.84,
+  bodySizePercent: 0.05,
+  headSizePercent: 0.046,
+  showHeadlineBox: true,
+};
+
 export interface PostingConfig {
   privacyLevel: string;
   postAsDraft: boolean;
