@@ -81,8 +81,8 @@ async function fetchEmbed(awemeId: string): Promise<SlideshowCandidate> {
     .map((img) => firstUrl(img.urlList) || firstUrl(img.url_list))
     .filter((url): url is string => Boolean(url));
 
-  if (images.length < 2) {
-    throw new Error('This TikTok post is not a photo carousel (need at least 2 images)');
+  if (images.length < 1) {
+    throw new Error('This TikTok post has no photo images to import');
   }
 
   const item = (videoData.itemInfos || {}) as Record<string, unknown>;
@@ -139,6 +139,8 @@ async function fetchTikWm(sourceUrl: string, awemeId: string): Promise<Slideshow
       share_count?: number;
       collect_count?: number;
       images?: string[];
+      cover?: string;
+      origin_cover?: string;
       author?: { unique_id?: string };
     };
   };
@@ -146,9 +148,14 @@ async function fetchTikWm(sourceUrl: string, awemeId: string): Promise<Slideshow
     throw new Error(`TikWM error: ${payload.msg || 'unknown'}`);
   }
 
-  const images = (payload.data.images || []).filter(Boolean);
-  if (images.length < 2) {
-    throw new Error('This TikTok post is not a photo carousel (need at least 2 images)');
+  const images = [
+    ...(payload.data.images || []).filter(Boolean),
+    ...(payload.data.cover ? [payload.data.cover] : []),
+    ...(payload.data.origin_cover ? [payload.data.origin_cover] : []),
+  ].filter((url, index, all) => all.indexOf(url) === index);
+
+  if (images.length < 1) {
+    throw new Error('This TikTok post has no photo images to import');
   }
 
   const caption = payload.data.title || '';

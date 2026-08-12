@@ -70,7 +70,7 @@ export async function analyzeTikTokUrl(
   }
 
   const maxSlides = Math.min(5, source.slideImages.length);
-  progress(`Found ${source.slideImages.length} photos from @${source.creator}`);
+  progress(`Found ${source.slideImages.length} photo${source.slideImages.length === 1 ? '' : 's'} from @${source.creator}`);
 
   const slideUrls = source.slideImages.slice(0, maxSlides);
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'slydshow-analyze-'));
