@@ -1,6 +1,11 @@
 'use client';
 
-export type StudioSlideText = { index: number; headline?: string; body: string };
+export type StudioSlideText = {
+  index: number;
+  headline?: string;
+  body: string;
+  textSource?: 'overlay' | 'graphic' | 'none';
+};
 
 export type StudioPhoto = {
   id: string;
@@ -92,6 +97,10 @@ export function normalizeStudioProject(input: Partial<StudioProject> | null | un
         index: Number(s?.index || i + 1),
         headline: s?.headline ? String(s.headline) : undefined,
         body: String(s?.body || ''),
+        textSource:
+          s?.textSource === 'overlay' || s?.textSource === 'graphic' || s?.textSource === 'none'
+            ? s.textSource
+            : undefined,
       }))
     : [];
   const importedSlides = Array.isArray(input?.importedSlides)
@@ -99,6 +108,10 @@ export function normalizeStudioProject(input: Partial<StudioProject> | null | un
         index: Number(s?.index || i + 1),
         headline: s?.headline ? String(s.headline) : undefined,
         body: String(s?.body || ''),
+        textSource:
+          s?.textSource === 'overlay' || s?.textSource === 'graphic' || s?.textSource === 'none'
+            ? s.textSource
+            : undefined,
       }))
     : [];
   const selected = Array.isArray(input?.selected)

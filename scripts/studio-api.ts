@@ -1,4 +1,5 @@
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import sharp from 'sharp';
 import {
@@ -12,6 +13,7 @@ import {
   writeJson,
 } from './utils';
 import { findSlideshowFromSource } from './find-slideshows';
+import { extractOverlayTextFromSlideImage, type SlideTextSource } from './slide-overlay-text';
 import {
   PhotoCandidate,
   downloadAndNormalize,
@@ -26,6 +28,14 @@ export interface SlideText {
   index: number;
   headline?: string;
   body: string;
+  textSource?: SlideTextSource;
+}
+
+async function downloadSlideToFile(url: string, outPath: string): Promise<void> {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Failed to download slide (${res.status})`);
+  const buffer = Buffer.from(await res.arrayBuffer());
+  await sharp(buffer).rotate().jpeg({ quality: 90 }).toFile(outPath);
 }
 
 export interface AnalyzeResult {
@@ -62,10 +72,34 @@ export async function analyzeTikTokUrl(
   const maxSlides = Math.min(5, source.slideImages.length);
   progress(`Found ${source.slideImages.length} photos from @${source.creator}`);
 
-  const slides: SlideText[] = Array.from({ length: maxSlides }, (_, i) => ({
-    index: i + 1,
-    body: '',
-  }));
+  const slideUrls = source.slideImages.slice(0, maxSlides);
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'slydshow-analyze-'));
+  const slides: SlideText[] = [];
+
+  try {
+    progress('Reading TikTok overlay text (skipping designed graphics)…');
+    for (let i = 0; i < slideUrls.length; i += 1) {
+      const outPath = path.join(tempDir, `slide-${i + 1}.jpg`);
+      progress(`Slide ${i + 1}/${slideUrls.length}…`);
+      await downloadSlideToFile(slideUrls[i], outPath);
+      const extracted = await extractOverlayTextFromSlideImage(outPath, i + 1, 'studio-api');
+      slides.push({
+        index: i + 1,
+        headline: extracted.headline,
+        body: extracted.body || '',
+        textSource: extracted.textSource,
+      });
+    }
+
+    const overlayCount = slides.filter((slide) => slide.textSource === 'overlay').length;
+    progress(
+      overlayCount
+        ? `Found overlay text on ${overlayCount} slide${overlayCount === 1 ? '' : 's'}`
+        : 'No TikTok overlay text — slides are photos or designed graphics'
+    );
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
 
   progress('Photos ready');
   return {
@@ -80,7 +114,7 @@ export async function analyzeTikTokUrl(
     sourceCaption: source.caption || '',
     hashtags: source.hashtags || [],
     slides,
-    slideImages: source.slideImages.slice(0, maxSlides),
+    slideImages: slideUrls,
   };
 }
 

@@ -7,7 +7,6 @@ import {
   SlideshowAnalysis,
   SlideshowCandidate,
   ensureDir,
-  extractJsonObject,
   log,
   logError,
   makePostTimestamp,
@@ -15,155 +14,16 @@ import {
   resolvePath,
   writeJson,
 } from './utils';
-import { getOpenAI, getOpenAIModel } from './openai';
 import { findSlideshowFromSource } from './find-slideshows';
 import { buildSlideImageQueries, fetchImages } from './fetch-images';
 import { postToTikTok } from './post-to-tiktok';
+import { extractOverlayTextFromSlideImage, hasOverlayCopy } from './slide-overlay-text';
 
 async function downloadToFile(url: string, outPath: string): Promise<void> {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Failed to download ${url} (${res.status})`);
   const buffer = Buffer.from(await res.arrayBuffer());
   await sharp(buffer).jpeg({ quality: 90 }).toFile(outPath);
-}
-
-function flowText(value: string): string {
-  return value
-    .replace(/[\u{1F300}-\u{1FAFF}]/gu, '')
-    .replace(/[\u{2600}-\u{27BF}]/gu, '')
-    .replace(/\r/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-/** True when a word looks like title-case / ALL CAPS title material (not sentence body). */
-function isTitleWord(word: string): boolean {
-  if (!word) return false;
-  if (/^[A-Z0-9][A-Z0-9'’\-]*$/.test(word)) return true; // ALL CAPS
-  if (/^[A-Z][a-z'’\-]*$/.test(word)) return true; // Title Case
-  if (/^\d+\.?$/.test(word)) return true;
-  return false;
-}
-
-/**
- * Vision often splits a wrapped title across headline + body, e.g.
- * headline: "HOW TO ACTUALLY MAKE"
- * body: "Beats Artists Remember Save these for later"
- * Pull leading title words back into the headline; leave the sentence body alone.
- */
-function rejoinSplitTitle(headline: string, body: string): { headline: string; body: string } {
-  if (!headline || !body) return { headline, body };
-
-  const incompleteTitle =
-    /^(how to|why |what |nobody |stop |don't |dont )/i.test(headline) && !/[.!?]$/.test(headline);
-
-  // Also catch mid-wrap cuts: short headline that doesn't look like a finished pill
-  const looksTruncated =
-    incompleteTitle ||
-    (headline.split(/\s+/).length <= 5 && !/[.!?]$/.test(headline) && isTitleWord(body.split(/\s+/)[0] || ''));
-
-  if (!looksTruncated) return { headline, body };
-
-  const words = body.split(/\s+/).filter(Boolean);
-  const titleExtra: string[] = [];
-  let i = 0;
-
-  while (i < words.length) {
-    const word = words[i];
-    const next = words[i + 1];
-
-    // Sentence body starts: "Save these…" (capital then lowercase function word)
-    if (/^[A-Z]/.test(word) && next && /^[a-z]/.test(next)) break;
-    // Or body already mid-sentence
-    if (/^[a-z]/.test(word)) break;
-    if (!isTitleWord(word)) break;
-
-    titleExtra.push(word);
-    i += 1;
-  }
-
-  if (!titleExtra.length) return { headline, body };
-
-  return {
-    headline: flowText(`${headline} ${titleExtra.join(' ')}`),
-    body: flowText(words.slice(i).join(' ')),
-  };
-}
-
-function normalizeLayout(layout: SlideLayout): SlideLayout {
-  let headline = flowText(layout.headline || '');
-  let body = flowText(layout.body || '');
-
-  ({ headline, body } = rejoinSplitTitle(headline, body));
-
-  // Title-only cover slides: all white outlined text, no pill — keep as title if no body left
-  if (!headline && body && /^(how to|why |what |nobody )/i.test(body) && body.length <= 90) {
-    return { headline: body.toUpperCase(), body: '' };
-  }
-
-  return {
-    headline: headline ? headline.toUpperCase() : undefined,
-    body,
-  };
-}
-
-export async function extractTextFromSlideImage(imagePath: string, index: number): Promise<SlideLayout> {
-  const client = getOpenAI();
-  const model = getOpenAIModel();
-  const bytes = fs.readFileSync(imagePath);
-  const b64 = bytes.toString('base64');
-
-  log('remake', `Reading on-screen text from slide ${index}...`);
-
-  const response = await client.chat.completions.create({
-    model,
-    max_tokens: 400,
-    temperature: 0,
-    response_format: { type: 'json_object' },
-    messages: [
-      {
-        role: 'system',
-        content:
-          'You extract on-screen text from TikTok photo carousel slides. Many slides have TWO layers: a short headline inside a white rounded box, plus longer white outlined body text. Return JSON only. Join wrapping into a single flowing line — no line breaks. Do not invent text. No emoji.',
-      },
-      {
-        role: 'user',
-        content: [
-          {
-            type: 'text',
-            text: `Extract the exact on-screen text from this TikTok slideshow image (slide ${index}).
-
-Return JSON:
-{
-  "headline": "short boxed headline or empty string if none",
-  "body": "main white outlined text as one flowing sentence/paragraph with spaces, not line breaks"
-}
-
-Rules:
-- headline = ONLY text inside a visible white pill/box (black letters on a white rounded background). Empty string if there is no white box.
-- If ALL on-screen text is white letters (no white box), put the MAIN title in headline and any smaller subtitle/body line in body. Cover slides like "HOW TO ACTUALLY MAKE BEATS ARTISTS REMEMBER" + "Save these for later" must keep the FULL title in headline — never cut a wrapped title across fields.
-- body = the larger white text with black outline, not in a box — OR the subtitle under a cover title.
-- Do NOT preserve visual line wrapping. Collapse wrapped title lines into ONE headline string separated by spaces (e.g. line1 "HOW TO ACTUALLY MAKE" + line2 "BEATS ARTISTS REMEMBER" → headline "HOW TO ACTUALLY MAKE BEATS ARTISTS REMEMBER").
-- Never put only the first wrapped line of a title into headline and the rest into body.`,
-          },
-          {
-            type: 'image_url',
-            image_url: {
-              url: `data:image/jpeg;base64,${b64}`,
-            },
-          },
-        ],
-      },
-    ],
-  });
-
-  const content = response.choices[0]?.message?.content;
-  if (!content) return { body: '' };
-  const parsed = extractJsonObject(content) as { headline?: string; body?: string; text?: string };
-  return normalizeLayout({
-    headline: parsed.headline || '',
-    body: parsed.body || parsed.text || '',
-  });
 }
 
 function buildRemakeAnalysis(source: SlideshowCandidate, slideTexts: string[]): SlideshowAnalysis {
@@ -288,16 +148,25 @@ export async function remakeFromTikTokUrl(sourceUrl: string): Promise<string> {
   const layouts: SlideLayout[] = [];
   const contentCount = Math.max(1, Math.min(4, originalPaths.length - 1));
   for (let i = 0; i < contentCount; i++) {
-    const layout = await extractTextFromSlideImage(originalPaths[i], i + 1);
-    layouts.push(layout);
+    const extracted = await extractOverlayTextFromSlideImage(originalPaths[i], i + 1, 'remake');
+    layouts.push({
+      headline: extracted.headline,
+      body: extracted.body || '',
+    });
     log(
       'remake',
-      `Slide ${i + 1}: ${layout.headline ? `TITLE "${layout.headline}" | ` : ''}BODY "${layout.body || '(empty)'}"`
+      `Slide ${i + 1}: ${extracted.textSource}${
+        hasOverlayCopy(extracted)
+          ? `${extracted.headline ? ` TITLE "${extracted.headline}"` : ''}${
+              extracted.body ? ` BODY "${extracted.body}"` : ''
+            }`
+          : ''
+      }`
     );
   }
 
   if (layouts.every((l) => !l.body.trim() && !l.headline)) {
-    throw new Error('No on-screen text could be read from the carousel slides');
+    throw new Error('No TikTok overlay text found on this carousel (designed graphics are skipped)');
   }
 
   while (layouts.length < 4) {

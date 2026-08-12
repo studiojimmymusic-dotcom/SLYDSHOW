@@ -1,7 +1,12 @@
 import { chatJson } from './openai';
 import { loadConfig, log } from './utils';
 
-export type SlideText = { index: number; headline?: string; body: string };
+export type SlideText = {
+  index: number;
+  headline?: string;
+  body: string;
+  textSource?: 'overlay' | 'graphic' | 'none';
+};
 
 export type IntelligenceAnalysis = {
   hook: string;
@@ -35,6 +40,7 @@ export type OriginalCopyResult = {
 
 function slidesToTranscript(slides: SlideText[]): string {
   return slides
+    .filter((slide) => slide.textSource !== 'graphic')
     .map((slide) => {
       const headline = String(slide.headline || '').trim();
       const body = String(slide.body || '').trim();

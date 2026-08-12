@@ -28,7 +28,12 @@ import {
   saveIntelligenceAnalysis,
 } from './lib/content-patterns-client';
 
-type SlideText = { index: number; headline?: string; body: string };
+type SlideText = { index: number; headline?: string; body: string; textSource?: 'overlay' | 'graphic' | 'none' };
+
+function slideHasOverlayCopy(slide: SlideText): boolean {
+  if (slide.textSource === 'graphic' || slide.textSource === 'none') return false;
+  return Boolean(String(slide.headline || '').trim() || String(slide.body || '').trim());
+}
 type Photo = { id: string; url: string; thumbUrl: string; description: string; query: string };
 type SlotPhoto = Photo | null;
 type TikTokAccount = { id: string; label: string };
@@ -137,6 +142,7 @@ function cloneSlides(slides: SlideText[]): SlideText[] {
     index: slide.index,
     headline: slide.headline,
     body: slide.body,
+    textSource: slide.textSource,
   }));
 }
 
@@ -942,7 +948,7 @@ export default function StudioDeskPage() {
               <div>
                 <h2 className="font-sans text-[15px] font-semibold text-text-primary">Copy</h2>
                 <p className="mt-1 text-[13px] text-text-secondary">
-                  These photos already have text in the graphic. Write original only if you want new overlay copy — otherwise add text in TikTok.
+                  Copy comes from TikTok overlay text on photos. Designed infographic slides are skipped — use Write original for new hooks.
                 </p>
               </div>
               <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
@@ -964,17 +970,27 @@ export default function StudioDeskPage() {
 
             {slides.length === 0 ? (
               <p className="mt-5 text-[13px] leading-5 text-text-tertiary">Slide text shows here after import.</p>
-            ) : !copyIsOriginal && slides.every((slide) => !String(slide.headline || '').trim() && !String(slide.body || '').trim()) ? (
-              <p className="mt-5 text-[13px] leading-5 text-text-tertiary">
-                No overlay text on this carousel. Use Write original, or leave it blank and add text in TikTok.
-              </p>
             ) : (
               <div className="mt-5 divide-y divide-border">
+                {!copyIsOriginal && !slides.some(slideHasOverlayCopy) ? (
+                  <p className="pb-4 text-[13px] leading-5 text-text-tertiary">
+                    No TikTok overlay text found. Slides are photos or designed graphics — use Write original, or add text in TikTok.
+                  </p>
+                ) : null}
                 {slides.map((slide) => {
                   const { title, body } = repairSlide(slide);
+                  const hasCopy = slideHasOverlayCopy(slide) || copyIsOriginal;
                   return (
                     <div key={slide.index} className="py-3 first:pt-0 last:pb-0">
                       <span className="font-mono text-[11px] text-text-tertiary">Page {slide.index}</span>
+
+                      {!hasCopy ? (
+                        <p className="mt-2 text-[12px] leading-5 text-text-tertiary">
+                          {slide.textSource === 'graphic'
+                            ? 'Designed graphic — text is part of the image, not a TikTok overlay.'
+                            : 'No overlay text on this slide.'}
+                        </p>
+                      ) : null}
 
                       {title ? (
                         <div className="mt-2">
