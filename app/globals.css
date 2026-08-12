@@ -1,0 +1,103 @@
+@import "tailwindcss";
+
+:root {
+  --felar-background: #ffffff;
+  --felar-surface: #fafaf9;
+  --felar-border: #eaeae7;
+  --felar-text-primary: #141311;
+  --felar-text-secondary: #6b6862;
+  --felar-text-tertiary: #9c988f;
+  --felar-accent: #ffbd59;
+  --felar-accent-hover: #f0a93e;
+  --felar-accent-tint: #fff4e0;
+  --felar-success: #2f8f5b;
+  --felar-error: #c4432e;
+  --felar-dark-text-on-accent: #141311;
+  --felar-header-bg: #ffffff;
+  --felar-muted-bg: #fafaf9;
+}
+
+@theme inline {
+  --color-background: var(--felar-background);
+  --color-surface: var(--felar-surface);
+  --color-border: var(--felar-border);
+  --color-text-primary: var(--felar-text-primary);
+  --color-text-secondary: var(--felar-text-secondary);
+  --color-text-tertiary: var(--felar-text-tertiary);
+  --color-accent: var(--felar-accent);
+  --color-accent-hover: var(--felar-accent-hover);
+  --color-accent-tint: var(--felar-accent-tint);
+  --color-success: var(--felar-success);
+  --color-error: var(--felar-error);
+  --color-dark-text-on-accent: var(--felar-dark-text-on-accent);
+  --color-header-bg: var(--felar-header-bg);
+  --color-muted-bg: var(--felar-muted-bg);
+
+  --font-display: var(--font-fraunces), ui-serif, Georgia, serif;
+  --font-sans: var(--font-general-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, monospace;
+
+  --text-display-md: 32px;
+  --text-display-md--line-height: 1.15;
+  --text-heading-sm: 22px;
+  --text-heading-sm--line-height: 1.3;
+  --text-body-lg: 18px;
+  --text-body-lg--line-height: 1.6;
+  --text-body-md: 16px;
+  --text-body-md--line-height: 1.6;
+  --text-body-sm: 14px;
+  --text-body-sm--line-height: 1.5;
+  --text-caption: 13px;
+  --text-caption--line-height: 1.4;
+
+  --radius-card: 8px;
+  --radius-button: 6px;
+  --radius-pill: 999px;
+}
+
+@layer base {
+  html,
+  body {
+    height: 100%;
+  }
+
+  body {
+    background-color: var(--felar-surface);
+    color: var(--felar-text-primary);
+    font-family: var(--font-sans);
+    font-size: 16px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--felar-accent);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background-color: var(--felar-accent-tint);
+    color: var(--felar-text-primary);
+  }
+
+  input,
+  textarea,
+  button {
+    font: inherit;
+  }
+}
+
+.panel-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: #d9d6cf transparent;
+}
+
+.panel-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+
+.panel-scroll::-webkit-scrollbar-thumb {
+  background: #d9d6cf;
+  border-radius: 99px;
+}

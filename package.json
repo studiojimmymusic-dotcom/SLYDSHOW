@@ -1,0 +1,35 @@
+{
+  "name": "slydshow",
+  "version": "1.0.0",
+  "description": "SLYDSHOW — TikTok slideshow remake desk for FELAR",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --port 3007",
+    "build": "next build",
+    "start": "next start --port 3007",
+    "pipeline": "ts-node --project tsconfig.scripts.json scripts/pipeline.ts",
+    "remake": "ts-node --project tsconfig.scripts.json scripts/remake.ts",
+    "find": "ts-node --project tsconfig.scripts.json scripts/find-slideshows.ts",
+    "report": "ts-node --project tsconfig.scripts.json scripts/daily-report.ts",
+    "test:overlay": "ts-node --project tsconfig.scripts.json scripts/add-overlays.ts --test"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "next": "^15.5.0",
+    "openai": "^4.104.0",
+    "opentype.js": "^2.0.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "sharp": "^0.33.5"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.11",
+    "@types/node": "^20.17.0",
+    "@types/opentype.js": "^1.3.10",
+    "@types/react": "^19.1.8",
+    "@types/react-dom": "^19.1.6",
+    "tailwindcss": "^4.1.11",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.7.0"
+  }
+}

@@ -1,0 +1,101 @@
+{
+  "brand": {
+    "name": "FELAR",
+    "description": "A platform where music producers in Nigeria and Africa sell beats, build storefronts, and grow their music business online",
+    "audience": "Nigerian and African music producers, beat makers, artists",
+    "voice": "Direct, authentic, speaks to the hustle of African producers. Not corporate. Not generic. Understands the Lagos music scene, Afrobeats, Amapiano, drill. Talks like a producer who gets it.",
+    "topics": [
+      "selling beats online",
+      "growing as a producer in Nigeria",
+      "making money from music",
+      "building a beat store",
+      "producer life in Africa",
+      "Afrobeats production tips",
+      "getting your first beat sale"
+    ],
+    "avoidTopics": [
+      "anything unrelated to music production",
+      "Western-only references",
+      "generic AI copy"
+    ]
+  },
+  "tiktok": {
+    "searchKeywords": [
+      "music producer tips",
+      "sell beats online",
+      "beat maker tips",
+      "afrobeats producer"
+    ],
+    "searchHashtags": [
+      "beatmaker",
+      "musicproducer",
+      "sellbeats",
+      "producerlife"
+    ],
+    "minViews": 50000,
+    "slideshowOnly": true,
+    "resultsPerSearch": 30,
+    "manualPhotoSources": []
+  },
+  "pinterest": {
+    "rapidApiHost": "pinterest-ultimate-api-scraper-trends-keywords-more.p.rapidapi.com",
+    "searchPath": "/pins/relevance",
+    "imagesPerPost": 5,
+    "preferPortrait": true,
+    "minWidth": 600,
+    "searchTermTemplate": "music studio aesthetic",
+    "preferredQueries": [
+      "music studio aesthetic",
+      "late night music studio",
+      "dark music studio",
+      "beat making aesthetic",
+      "studio session"
+    ],
+    "searchQueries": [
+      "music studio aesthetic",
+      "music producer studio",
+      "home recording studio",
+      "beat making studio",
+      "music production setup",
+      "recording studio aesthetic",
+      "producer at work",
+      "music producer laptop",
+      "studio session",
+      "recording artist studio",
+      "producer headphones",
+      "mixing music studio",
+      "beat making aesthetic",
+      "studio monitor speakers",
+      "MIDI keyboard studio",
+      "audio interface studio",
+      "microphone recording studio",
+      "late night music studio",
+      "dark music studio",
+      "music equipment aesthetic"
+    ]
+  },
+  "overlays": {
+    "enabled": false,
+    "fontPath": "fonts/Montserrat-Bold.ttf",
+    "fontColor": "#FFFFFF",
+    "strokeColor": "#000000",
+    "strokeWidthPercent": 0.3,
+    "textPositionFromTop": 0.2,
+    "maxWidthPercent": 0.84,
+    "outputWidth": 1024,
+    "outputHeight": 1536
+  },
+  "posting": {
+    "privacyLevel": "PUBLIC_TO_EVERYONE",
+    "postAsDraft": true,
+    "schedule": ["07:30", "16:30", "21:00"]
+  },
+  "analytics": {
+    "highViews": 10000,
+    "highEngagementRate": 0.05,
+    "lookbackDays": 3
+  },
+  "openai": {
+    "model": "gpt-4o-mini"
+  }
+}
