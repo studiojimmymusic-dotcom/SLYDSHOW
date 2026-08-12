@@ -30,6 +30,7 @@ import {
 
 type SlideText = { index: number; headline?: string; body: string };
 type Photo = { id: string; url: string; thumbUrl: string; description: string; query: string };
+type SlotPhoto = Photo | null;
 type TikTokAccount = { id: string; label: string };
 type ShareMode = 'zernio' | 'inbox';
 
@@ -146,6 +147,26 @@ function copyFingerprint(slides: SlideText[], caption: string): string {
   });
 }
 
+function padSlots(list: SlotPhoto[], length: number): SlotPhoto[] {
+  const next = list.slice(0, length);
+  while (next.length < length) next.push(null);
+  return next;
+}
+
+function photosFromImportedImages(urls: string[], tiktokId: string): Photo[] {
+  return urls
+    .map((url) => String(url || '').trim())
+    .filter(Boolean)
+    .slice(0, 5)
+    .map((url, i) => ({
+      id: `import:${tiktokId || 'post'}:${i + 1}`,
+      url,
+      thumbUrl: url,
+      description: `Imported slide ${i + 1}`,
+      query: 'imported',
+    }));
+}
+
 export default function StudioDeskPage() {
   const [url, setUrl] = useState('');
   const [status, setStatus] = useState('');
@@ -155,7 +176,7 @@ export default function StudioDeskPage() {
   const [slides, setSlides] = useState<SlideText[]>([]);
   const [caption, setCaption] = useState('');
   const [photos, setPhotos] = useState<Photo[]>([]);
-  const [selected, setSelected] = useState<Photo[]>([]);
+  const [selected, setSelected] = useState<SlotPhoto[]>([]);
   const [slide6DataUrl, setSlide6DataUrl] = useState('');
   const [slide6Name, setSlide6Name] = useState('');
   const [posted, setPosted] = useState('');
@@ -314,9 +335,11 @@ export default function StudioDeskPage() {
   const photoSlots = slides.length ? contentSlideCount(slides.length) : 0;
   const totalSlots = photoSlots ? totalSlideCount(photoSlots) : 0;
   const promoSlot = totalSlots;
+  const slots = padSlots(selected, photoSlots);
+  const filledSlots = slots.filter(Boolean).length;
 
   const canShare =
-    photoSlots > 0 && selected.length === photoSlots && Boolean(slide6DataUrl) && Boolean(accountId);
+    photoSlots > 0 && filledSlots === photoSlots && Boolean(slide6DataUrl) && Boolean(accountId);
 
   async function analyze(e?: FormEvent) {
     e?.preventDefault();
@@ -351,23 +374,37 @@ export default function StudioDeskPage() {
       setImportedSlides(cloneSlides(importedSlides));
       setImportedCaption(nextCaption);
       setCopyIsOriginal(false);
-      pushLog(
-        `Need ${contentSlideCount(importedSlides.length)} photos + app screenshot as last slide.`
+      const originals = photosFromImportedImages(
+        Array.isArray(data.slideImages) ? data.slideImages.map(String) : [],
+        String(data.tiktokId || '')
       );
-      pushLog('Finding studio photos…');
+      const slotCount = contentSlideCount(importedSlides.length);
+      setSelected(padSlots(originals, slotCount));
+      pushLog(
+        originals.length
+          ? `Loaded ${originals.length} original photo${originals.length === 1 ? '' : 's'} into the slots.`
+          : `Need ${slotCount} photos + app screenshot as last slide.`
+      );
+      pushLog('Finding more studio photos…');
       const importedPhotos = await loadPhotos({
         replace: true,
-        exclude: [],
+        exclude: originals.map((p) => p.id),
         query: searchQuery,
         keepBusy: true,
       });
+      const pickerPhotos = [
+        ...originals,
+        ...importedPhotos.filter((p) => !originals.some((o) => o.id === p.id)),
+      ];
+      setPhotos(pickerPhotos);
       const project = createStudioProjectFromImport({
         sourceUrl: url.trim(),
         creator: String(data.creator || ''),
         views: Number(data.views || 0),
         slides: importedSlides,
         caption: nextCaption,
-        photos: importedPhotos,
+        photos: pickerPhotos,
+        selected: padSlots(originals, slotCount),
         searchQuery,
       });
       skipNextSave.current = true;
@@ -424,7 +461,11 @@ export default function StudioDeskPage() {
     e?.preventDefault();
     e?.stopPropagation();
     if (busy) return;
-    await loadPhotos({ replace: true, exclude: selected.map((p) => p.id), query: searchQuery });
+    await loadPhotos({
+      replace: true,
+      exclude: selected.filter(Boolean).map((p) => p!.id),
+      query: searchQuery,
+    });
   }
 
   async function loadPhotos(opts?: {
@@ -437,7 +478,9 @@ export default function StudioDeskPage() {
     const query = (opts?.query ?? searchQuery).trim();
     const exclude =
       opts?.exclude ??
-      (replace ? selected.map((p) => p.id) : [...photos.map((p) => p.id), ...selected.map((p) => p.id)]);
+      (replace
+        ? selected.filter(Boolean).map((p) => p!.id)
+        : [...photos.map((p) => p.id), ...selected.filter(Boolean).map((p) => p!.id)]);
 
     if (!opts?.keepBusy) {
       setBusy(true);
@@ -466,15 +509,31 @@ export default function StudioDeskPage() {
     }
   }
 
+  function clearSlot(index: number) {
+    if (!photoSlots) return;
+    setSelected((prev) => {
+      const next = padSlots(prev, photoSlots);
+      next[index] = null;
+      return next;
+    });
+  }
+
   function togglePhoto(photo: Photo) {
     if (!photoSlots) {
       pushLog('Import a carousel first');
       return;
     }
     setSelected((prev) => {
-      if (prev.some((p) => p.id === photo.id)) return prev.filter((p) => p.id !== photo.id);
-      if (prev.length >= photoSlots) return prev;
-      return [...prev, photo];
+      const next = padSlots(prev, photoSlots);
+      const existing = next.findIndex((p) => p?.id === photo.id);
+      if (existing >= 0) {
+        next[existing] = null;
+        return next;
+      }
+      const empty = next.findIndex((p) => !p);
+      if (empty < 0) return prev;
+      next[empty] = photo;
+      return next;
     });
   }
 
@@ -571,8 +630,8 @@ export default function StudioDeskPage() {
       return;
     }
 
-    const imageUrls = selected.slice(0, photoSlots).map((p) => p.url);
-    const imageIds = selected.slice(0, photoSlots).map((p) => p.id);
+    const imageUrls = slots.map((p) => p!.url);
+    const imageIds = slots.map((p) => p!.id);
 
     const copies = buildEditorCopies(slides);
     const slidesPayload = copies.slice(0, totalSlots).map((c) => ({
@@ -634,7 +693,7 @@ export default function StudioDeskPage() {
       footer={
         <span className="font-mono">
           {photoSlots
-            ? `${selected.length}/${photoSlots} photos · slide ${promoSlot} ${slide6DataUrl ? 'ready' : 'needed'}`
+            ? `${filledSlots}/${photoSlots} photos · slide ${promoSlot} ${slide6DataUrl ? 'ready' : 'needed'}`
             : 'Import a carousel to start'}
         </span>
       }
@@ -749,12 +808,12 @@ export default function StudioDeskPage() {
           {photoSlots ? (
             <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${totalSlots}, minmax(0, 1fr))` }}>
               {Array.from({ length: photoSlots }).map((_, i) => {
-                const photo = selected[i];
+                const photo = slots[i];
                 return (
                   <button
                     key={i}
                     type="button"
-                    onClick={() => photo && togglePhoto(photo)}
+                    onClick={() => photo && clearSlot(i)}
                     className="overflow-hidden rounded-card border border-border bg-surface text-left"
                   >
                     <div className="relative aspect-[9/16]">
@@ -859,7 +918,7 @@ export default function StudioDeskPage() {
             ) : (
               <div className="grid grid-cols-4 gap-2">
                 {photos.map((photo) => {
-                  const slot = selected.findIndex((p) => p.id === photo.id);
+                  const slot = slots.findIndex((p) => p?.id === photo.id);
                   return (
                     <button
                       key={photo.id}

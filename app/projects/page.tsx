@@ -91,7 +91,7 @@ export default function ProjectsPage() {
                     Updated {formatWhen(project.updatedAt)}
                     {project.creator ? ` · @${project.creator.replace(/^@/, '')}` : ''}
                     {project.slides.length ? ` · ${project.slides.length} slides` : ''}
-                    {project.selected.length ? ` · ${project.selected.length} photos picked` : ''}
+                    {project.selected.filter(Boolean).length ? ` · ${project.selected.filter(Boolean).length} photos picked` : ''}
                     {project.slide6DataUrl ? ' · promo ready' : ''}
                   </p>
                   {project.sourceUrl ? (

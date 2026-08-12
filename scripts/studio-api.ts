@@ -41,6 +41,7 @@ export interface AnalyzeResult {
   sourceCaption: string;
   hashtags: string[];
   slides: SlideText[];
+  slideImages: string[];
 }
 
 async function downloadJpeg(url: string, outPath: string): Promise<void> {
@@ -107,6 +108,7 @@ export async function analyzeTikTokUrl(
     sourceCaption: source.caption || '',
     hashtags: source.hashtags || [],
     slides,
+    slideImages: source.slideImages.slice(0, maxSlides),
   };
 }
 
