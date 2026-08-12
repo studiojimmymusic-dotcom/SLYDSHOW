@@ -10,6 +10,8 @@ import {
   EditorSlideCopy,
   EditorSlideStyle,
   FELAR_SLIDE6,
+  buildPasteCaption,
+  extractHashtags,
   fileToSlideDataUrl,
   makeDefaultStyles,
 } from './lib/slide-style';
@@ -123,6 +125,7 @@ export default function StudioDeskPage() {
   const [views, setViews] = useState(0);
   const [slides, setSlides] = useState<SlideText[]>([]);
   const [caption, setCaption] = useState('');
+  const [captionHashtags, setCaptionHashtags] = useState<string[]>([]);
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [selected, setSelected] = useState<Photo[]>([]);
   const [slide6DataUrl, setSlide6DataUrl] = useState('');
@@ -208,8 +211,12 @@ export default function StudioDeskPage() {
       const data = await readNdjsonStream(res, pushLog);
       setCreator(String(data.creator || ''));
       setViews(Number(data.views || 0));
-      setSlides((data.slides || []) as SlideText[]);
-      setCaption(String(data.caption || ''));
+      const importedSlides = (data.slides || []) as SlideText[];
+      setSlides(importedSlides);
+      const tags = extractHashtags(String(data.caption || ''));
+      setCaptionHashtags(tags);
+      const copies = buildEditorCopies(importedSlides);
+      setCaption(buildPasteCaption(copies, { hashtags: tags }));
       pushLog('Finding studio photos…');
       await loadPhotos({ replace: true, exclude: [], query: searchQuery, keepBusy: true });
       pushLog('Import complete');
@@ -287,13 +294,19 @@ export default function StudioDeskPage() {
     }
   }
 
+  function syncCaptionFromCopies(copies: EditorSlideCopy[], tags = captionHashtags) {
+    setCaption(buildPasteCaption(copies, { hashtags: tags }));
+  }
+
   function openEditor() {
     if (!canContinue) {
       pushLog(selected.length !== 5 ? 'Pick 5 photos first' : 'Upload a screenshot for slide 6');
       return;
     }
-    setEditorCopies(buildEditorCopies(slides));
+    const copies = buildEditorCopies(slides);
+    setEditorCopies(copies);
     setEditorStyles(makeDefaultStyles(6));
+    syncCaptionFromCopies(copies);
     setActiveSlide(0);
     setStage('edit');
     setPosted('');
@@ -323,7 +336,8 @@ export default function StudioDeskPage() {
       body: c.body,
     }));
     const stylesPayload = editorStyles.slice(0, 6);
-    const captionPayload = caption;
+    const captionPayload =
+      caption.trim() || buildPasteCaption(editorCopies, { hashtags: captionHashtags });
     const modePayload = shareMode;
     const accountPayload = accountId;
     const slide6Payload = slide6DataUrl;
@@ -487,9 +501,11 @@ export default function StudioDeskPage() {
             styles={editorStyles}
             activeIndex={activeSlide}
             onActiveIndex={setActiveSlide}
-            onCopyChange={(index, next) =>
-              setEditorCopies((prev) => prev.map((c, i) => (i === index ? next : c)))
-            }
+            onCopyChange={(index, next) => {
+              const updated = editorCopies.map((c, i) => (i === index ? next : c));
+              setEditorCopies(updated);
+              syncCaptionFromCopies(updated);
+            }}
             onStyleChange={(index, next) =>
               setEditorStyles((prev) => prev.map((s, i) => (i === index ? next : s)))
             }
@@ -686,7 +702,7 @@ export default function StudioDeskPage() {
               <section className="rounded-xl border border-border bg-background p-5 shadow-[0_1px_2px_rgba(20,19,17,0.03)]">
                 <h2 className="font-sans text-[15px] font-semibold text-text-primary">Copy</h2>
                 <p className="mt-1 text-[13px] text-text-secondary">
-                  Preview from import — edit fully after Continue.
+                  Caption includes every slide title + body for TikTok paste.
                 </p>
 
                 {slides.length === 0 ? (

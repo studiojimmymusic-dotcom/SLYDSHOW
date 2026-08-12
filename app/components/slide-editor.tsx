@@ -326,12 +326,12 @@ export function SlideEditor({
 
           <div>
             <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.06em] text-text-tertiary">
-              Caption
+              Caption (copy into TikTok)
             </label>
             <textarea
               value={caption}
               onChange={(e) => onCaptionChange(e.target.value)}
-              className="min-h-24 w-full resize-y rounded-card border border-border bg-background px-3 py-2.5 text-[13px] leading-5 text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
+              className="min-h-40 w-full resize-y rounded-card border border-border bg-background px-3 py-2.5 font-mono text-[12px] leading-5 text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
             />
           </div>
         </section>

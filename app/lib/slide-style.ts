@@ -28,6 +28,47 @@ export function makeDefaultStyles(count = 6): EditorSlideStyle[] {
   return Array.from({ length: count }, () => ({ ...DEFAULT_SLIDE_STYLE }));
 }
 
+export function extractHashtags(text: string): string[] {
+  return [...new Set((String(text || '').match(/#[A-Za-z0-9_]+/g) || []))];
+}
+
+/**
+ * Caption for copy-paste into TikTok:
+ * TITLE (ALL CAPS)
+ * body
+ *
+ * (blank line between slides)
+ * then FELAR CTA + hashtags.
+ */
+export function buildPasteCaption(
+  copies: EditorSlideCopy[],
+  opts?: { hashtags?: string[]; includeCta?: boolean }
+): string {
+  const slideBlocks = copies
+    .map((copy) => {
+      const title = String(copy.headline || '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toUpperCase();
+      const body = String(copy.body || '')
+        .replace(/\r/g, '')
+        .replace(/[ \t]+/g, ' ')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+      return [title, body].filter(Boolean).join('\n');
+    })
+    .filter(Boolean);
+
+  const parts: string[] = [];
+  if (slideBlocks.length) parts.push(slideBlocks.join('\n\n'));
+  if (opts?.includeCta !== false) {
+    parts.push('Start selling beats on FELAR → usefelar.com');
+  }
+  const tags = (opts?.hashtags || []).filter(Boolean);
+  if (tags.length) parts.push([...new Set(tags)].join(' '));
+  return parts.join('\n\n');
+}
+
 /** Compress / normalize an uploaded screenshot to a JPEG data URL for slide 6. */
 export async function fileToSlideDataUrl(file: File, maxSide = 1600): Promise<string> {
   const bitmap = await createImageBitmap(file);
