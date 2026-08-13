@@ -13,7 +13,7 @@ import {
   writeJson,
 } from './utils';
 import { findSlideshowFromSource } from './find-slideshows';
-import { extractOverlayTextFromSlideImage, type SlideTextSource } from './slide-overlay-text';
+import { extractOverlayTextFromSlideImage, hasOverlayCopy, type SlideTextSource } from './slide-overlay-text';
 import {
   PhotoCandidate,
   downloadAndNormalize,
@@ -52,6 +52,29 @@ export function formatSourceCaption(caption: string, hashtags: string[] = []): s
 
   const suffix = missing.map((tag) => `#${tag}`).join(' ');
   return text ? `${text} ${suffix}` : suffix;
+}
+
+/** Overlay text first (for pasting into TikTok), original description underneath. */
+export function buildImportedCaption(slides: SlideText[], sourceCaption: string): string {
+  const overlay = slides
+    .filter((slide) => hasOverlayCopy(slide))
+    .map((slide) => {
+      const title = String(slide.headline || '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toUpperCase();
+      const body = String(slide.body || '')
+        .replace(/\r/g, '')
+        .replace(/[ \t]+/g, ' ')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+      return [title, body].filter(Boolean).join('\n');
+    })
+    .filter(Boolean)
+    .join('\n\n');
+
+  const description = String(sourceCaption || '').trim();
+  return [overlay, description].filter(Boolean).join('\n\n');
 }
 
 export interface AnalyzeResult {
@@ -118,7 +141,8 @@ export async function analyzeTikTokUrl(
   }
 
   progress('Photos ready');
-  const importedCaption = formatSourceCaption(source.caption || '', source.hashtags || []);
+  const sourceCaption = formatSourceCaption(source.caption || '', source.hashtags || []);
+  const importedCaption = buildImportedCaption(slides, sourceCaption);
   return {
     tiktokId: source.tiktokId,
     creator: source.creator,
@@ -128,7 +152,7 @@ export async function analyzeTikTokUrl(
     shares: source.shares,
     saves: source.saves,
     caption: importedCaption,
-    sourceCaption: importedCaption,
+    sourceCaption,
     hashtags: source.hashtags || [],
     slides,
     slideImages: slideUrls,

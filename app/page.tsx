@@ -9,6 +9,7 @@ import { loadLocalDeskSettings } from './lib/desk-settings-client';
 import {
   EditorSlideCopy,
   FELAR_CTA_SLIDE,
+  buildPasteCaption,
   contentSlideCount,
   fileToSlideDataUrl,
   totalSlideCount,
@@ -185,6 +186,10 @@ function photosFromImportedImages(urls: string[], tiktokId: string): Photo[] {
     }));
 }
 
+function isImportedPhoto(photo: Photo): boolean {
+  return photo.query === 'imported' || photo.id.startsWith('import:');
+}
+
 export default function StudioDeskPage() {
   const [url, setUrl] = useState('');
   const [status, setStatus] = useState('');
@@ -210,6 +215,8 @@ export default function StudioDeskPage() {
   const [importedSlides, setImportedSlides] = useState<SlideText[]>([]);
   const [importedCaption, setImportedCaption] = useState('');
   const [copyIsOriginal, setCopyIsOriginal] = useState(false);
+  const [importFocused, setImportFocused] = useState(false);
+  const importInputRef = useRef<HTMLInputElement>(null);
 
   const slide6InputRef = useRef<HTMLInputElement>(null);
   const skipNextSave = useRef(false);
@@ -359,6 +366,20 @@ export default function StudioDeskPage() {
   const canShare =
     photoSlots > 0 && filledSlots === photoSlots && Boolean(slide6DataUrl) && Boolean(accountId);
 
+  async function pasteImportUrl() {
+    try {
+      const text = (await navigator.clipboard.readText()).trim();
+      if (!text) {
+        pushLog('Clipboard is empty');
+        return;
+      }
+      setUrl(text);
+      importInputRef.current?.focus();
+    } catch {
+      pushLog('Could not paste — allow clipboard access or paste manually');
+    }
+  }
+
   async function analyze(e?: FormEvent) {
     e?.preventDefault();
     e?.stopPropagation();
@@ -385,7 +406,15 @@ export default function StudioDeskPage() {
       setCreator(String(data.creator || ''));
       setViews(Number(data.views || 0));
       const importedSlides = (data.slides || []) as SlideText[];
-      const importedCaptionText = String(data.caption || data.sourceCaption || '').trim();
+      const sourceCaptionText = String(data.sourceCaption || '').trim();
+      const overlayCopies = importedSlides.filter(slideHasOverlayCopy).map((slide) => {
+        const { title, body } = repairSlide(slide);
+        return { headline: title, body };
+      });
+      const importedCaptionText = buildPasteCaption(overlayCopies, {
+        includeCta: false,
+        sourceCaption: sourceCaptionText || String(data.caption || '').trim(),
+      });
       setSlides(importedSlides);
       setCaption(importedCaptionText);
       setImportedSlides(cloneSlides(importedSlides));
@@ -443,7 +472,7 @@ export default function StudioDeskPage() {
             comments: data.comments,
             shares: data.shares,
             saves: data.saves,
-            caption: importedCaptionText,
+            caption: sourceCaptionText || importedCaptionText,
             hashtags: data.hashtags,
             slides: importedSlides,
           }),
@@ -513,9 +542,11 @@ export default function StudioDeskPage() {
       });
       const data = await readNdjsonStream(res, pushLog);
       const next = (data.photos || []) as Photo[];
-      setPhotos((prev) =>
-        replace ? next : [...prev, ...next.filter((p) => !prev.some((x) => x.id === p.id))]
-      );
+      setPhotos((prev) => {
+        const keep = replace ? prev.filter(isImportedPhoto) : prev;
+        const incoming = next.filter((p) => !keep.some((x) => x.id === p.id));
+        return [...keep, ...incoming];
+      });
       pushLog(next.length ? `${next.length} photos ready` : 'No photos for that search');
       return next;
     } catch (error) {
@@ -797,18 +828,36 @@ export default function StudioDeskPage() {
         </div>
 
         <div className="flex gap-2">
-          <input
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                void analyze();
-              }
-            }}
-            placeholder="TikTok photo URL"
-            className={`${fieldClassName} min-w-0 flex-1`}
-          />
+          <div className="relative min-w-0 flex-1">
+            <input
+              ref={importInputRef}
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              onFocus={() => setImportFocused(true)}
+              onBlur={() => {
+                window.setTimeout(() => setImportFocused(false), 120);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  void analyze();
+                }
+              }}
+              placeholder="TikTok photo URL"
+              className={`${fieldClassName} ${importFocused && !url.trim() ? 'pr-[4.5rem]' : ''} min-w-0`}
+            />
+            {importFocused && !url.trim() ? (
+              <button
+                type="button"
+                tabIndex={-1}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => void pasteImportUrl()}
+                className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md border border-border bg-surface px-2.5 py-1 text-[12px] font-semibold text-[#B87A12] hover:bg-background"
+              >
+                Paste
+              </button>
+            ) : null}
+          </div>
           <Button type="button" variant="secondary" disabled={busy || !url.trim()} onClick={() => void analyze()}>
             {busy ? 'Working' : 'Import'}
           </Button>
@@ -1057,8 +1106,8 @@ export default function StudioDeskPage() {
                     <textarea
                       value={caption}
                       onChange={(e) => setCaption(e.target.value)}
-                      placeholder="Imported caption appears here"
-                      className="min-h-28 w-full resize-y rounded-card border border-border bg-background px-3 py-2.5 text-[13px] leading-5 text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
+                      placeholder="Overlay text, then the original description"
+                      className="min-h-40 w-full resize-y rounded-card border border-border bg-background px-3 py-2.5 text-[13px] leading-5 text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
                     />
                   </div>
                 ) : null}

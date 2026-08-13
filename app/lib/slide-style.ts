@@ -26,11 +26,12 @@ export function totalSlideCount(contentCount: number): number {
  * body
  *
  * (blank line between slides)
- * then FELAR CTA only — no hashtags, no imported caption.
+ * then the original post description, if provided.
+ * FELAR CTA is optional (on for generated copy, off for imports).
  */
 export function buildPasteCaption(
   copies: EditorSlideCopy[],
-  opts?: { includeCta?: boolean }
+  opts?: { includeCta?: boolean; sourceCaption?: string }
 ): string {
   const slideBlocks = copies
     .map((copy) => {
@@ -52,6 +53,8 @@ export function buildPasteCaption(
   if (opts?.includeCta !== false) {
     parts.push('Start selling beats on FELAR → usefelar.com');
   }
+  const source = String(opts?.sourceCaption || '').trim();
+  if (source) parts.push(source);
   return parts.join('\n\n');
 }
 
