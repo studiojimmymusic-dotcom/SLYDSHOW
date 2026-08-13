@@ -38,7 +38,7 @@ function slideHasOverlayCopy(slide: SlideText): boolean {
 type Photo = { id: string; url: string; thumbUrl: string; description: string; query: string };
 type SlotPhoto = Photo | null;
 type TikTokAccount = { id: string; label: string };
-type ShareMode = 'zernio' | 'inbox';
+type ShareMode = 'zernio' | 'inbox' | 'live';
 
 function proxied(url: string): string {
   if (url.startsWith('data:') || url.startsWith('blob:')) return url;
@@ -282,7 +282,7 @@ export default function StudioDeskPage() {
     if (local?.accounts.length) {
       setAccounts(local.accounts);
       setAccountId(local.activeAccountId || local.accounts[0]?.id || '');
-      if (local.tiktokPostMode === 'zernio' || local.tiktokPostMode === 'inbox') {
+      if (local.tiktokPostMode === 'zernio' || local.tiktokPostMode === 'inbox' || local.tiktokPostMode === 'live') {
         setShareMode(local.tiktokPostMode);
       }
     } else {
@@ -294,7 +294,7 @@ export default function StudioDeskPage() {
           const list = (data.accounts || []) as TikTokAccount[];
           setAccounts(list);
           setAccountId(data.activeAccountId || list[0]?.id || '');
-          if (data.tiktokPostMode === 'zernio' || data.tiktokPostMode === 'inbox') {
+          if (data.tiktokPostMode === 'zernio' || data.tiktokPostMode === 'inbox' || data.tiktokPostMode === 'live') {
             setShareMode(data.tiktokPostMode);
           }
         } catch {
@@ -693,7 +693,13 @@ export default function StudioDeskPage() {
     setLogLines([]);
 
     const accountLabel = accounts.find((a) => a.id === accountId)?.label || accountId;
-    pushLog(shareMode === 'zernio' ? `Sending to Zernio draft for ${accountLabel}…` : `Sending TikTok inbox draft to ${accountLabel}…`);
+    pushLog(
+      shareMode === 'zernio'
+        ? `Sending to Zernio draft for ${accountLabel}…`
+        : shareMode === 'live'
+          ? `Publishing live to ${accountLabel}…`
+          : `Sending TikTok inbox draft to ${accountLabel}…`
+    );
     pushLog(`Photos: ${imageIds.map((id) => id.split('/').pop() || id).join(', ')} + last slide upload`);
 
     try {
@@ -721,12 +727,17 @@ export default function StudioDeskPage() {
       if (shareMode === 'zernio') {
         setPosted(`Zernio draft saved for ${accountLabel}${data.zernioId ? ` (${data.zernioId})` : ''}.`);
         pushLog('Saved as Zernio draft (not sent to TikTok yet).');
+      } else if (shareMode === 'live') {
+        setPosted(`Posted live to @${accountLabel}${data.platformPostUrl ? '. Check the profile feed.' : '.'}`);
+        pushLog(`Live post submitted${data.title ? ` — "${data.title}"` : ''}`);
+        if (data.platformPostUrl) pushLog(data.platformPostUrl);
+        else pushLog('Check the TikTok profile feed. If Share failed, it was blocked rather than posted as Only you.');
       } else {
         setPosted(
-          `Sent to @${accountLabel}. Open TikTok → Inbox → System notifications. Missing it? Retry from Posts.`
+          `Sent to @${accountLabel}. Open the TikTok app → Inbox → Activity → System notifications — not Profile Drafts.`
         );
         pushLog(`Creator Inbox upload accepted${data.title ? ` — "${data.title}"` : ''}`);
-        pushLog('If nothing shows: open Posts → Retry inbox, or update TikTok and clear old pending uploads (max 5/day).');
+        pushLog('It will not show under Profile → Drafts. If nothing is there, you likely already have 5 unfinished inbox uploads on that account.');
         if (data.platformPostId) pushLog(`TikTok publish id: ${data.platformPostId}`);
       }
     } catch (error) {
@@ -764,11 +775,12 @@ export default function StudioDeskPage() {
           <select
             value={shareMode}
             onChange={(e) => setShareMode(e.target.value as ShareMode)}
-            className={`${fieldClassName} max-w-[160px]`}
+            className={`${fieldClassName} max-w-[180px]`}
             aria-label="Share destination"
           >
             <option value="zernio">Zernio draft</option>
             <option value="inbox">TikTok inbox</option>
+            <option value="live">TikTok live</option>
           </select>
           <Button type="button" onClick={() => void postDraft()} disabled={busy || !canShare}>
             Share
@@ -805,7 +817,10 @@ export default function StudioDeskPage() {
             <div>
               <h1 className="font-display text-[28px] font-medium tracking-tight text-text-primary">Studio</h1>
               <p className="mt-1 text-[14px] text-text-secondary">
-                Pick photos, upload your app screenshot as the last slide, then Share. Add the text in TikTok.
+                Pick photos, upload your app screenshot as the last slide, then Share.
+                {shareMode === 'live'
+                  ? ' Live posts go straight to the TikTok profile — add text in the caption before you share.'
+                  : ' Add the text in TikTok.'}
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">

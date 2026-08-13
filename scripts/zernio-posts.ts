@@ -73,6 +73,39 @@ export type StudioPostSummary = {
   canRetry: boolean;
 };
 
+export const TIKTOK_PENDING_INBOX_LIMIT = 5;
+const PENDING_INBOX_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+export function isUnopenedInboxShare(post: StudioPostSummary): boolean {
+  if (!post.isInboxDraft) return false;
+  if (post.status === 'failed' || post.platformStatus === 'failed') return false;
+  if (!post.platformPostId || !/inbox/i.test(post.platformPostId)) return false;
+  const created = Date.parse(post.createdAt);
+  if (!Number.isFinite(created)) return false;
+  return Date.now() - created < PENDING_INBOX_WINDOW_MS;
+}
+
+export async function countPendingInboxShares(accountId?: string): Promise<{
+  count: number;
+  limit: number;
+  username: string;
+  titles: string[];
+}> {
+  const { posts } = await listZernioPosts({ page: 1, limit: 50, accountId });
+  const pending = posts.filter(isUnopenedInboxShare);
+  return {
+    count: pending.length,
+    limit: TIKTOK_PENDING_INBOX_LIMIT,
+    username: pending[0]?.username || posts[0]?.username || '',
+    titles: pending.map((p) => p.title).slice(0, TIKTOK_PENDING_INBOX_LIMIT),
+  };
+}
+
+export function pendingInboxCapError(pending: { count: number; limit: number; username: string }): string {
+  const who = pending.username ? `@${pending.username}` : 'this account';
+  return `TikTok already has ${pending.count}/${pending.limit} unfinished inbox uploads on ${who}. They do not appear under Profile → Drafts. Open the TikTok app → Inbox → Activity → System notifications, publish or discard them, then wait 15–30 minutes.`;
+}
+
 function accountFields(platform?: ZernioPlatform): { accountId: string; username: string } {
   const raw = platform?.accountId;
   if (!raw) return { accountId: '', username: '' };
@@ -173,6 +206,11 @@ export async function retryZernioPostToInbox(postId: string): Promise<{
   const { accountId, username } = accountFields(platform);
   if (!accountId) throw new Error('This post has no TikTok account to retry');
 
+  const pending = await countPendingInboxShares(accountId);
+  if (pending.count >= TIKTOK_PENDING_INBOX_LIMIT) {
+    throw new Error(pendingInboxCapError({ ...pending, username: pending.username || username }));
+  }
+
   const mediaItems = (original.mediaItems || [])
     .filter((m) => m?.url)
     .map((m) => ({ type: 'image' as const, url: String(m.url) }));
@@ -199,6 +237,7 @@ export async function retryZernioPostToInbox(postId: string): Promise<{
     tiktokSettings: {
       media_type: 'photo',
       photo_cover_index: 0,
+      title,
       description,
       content_preview_confirmed: true,
       express_consent_given: true,

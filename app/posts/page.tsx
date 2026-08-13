@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { DeskShell } from '../components/desk-shell';
 import { Button } from '../components/ui';
 
+type PendingInboxAccount = { username: string; count: number; titles: string[] };
 type StudioPost = {
   id: string;
   title: string;
@@ -47,6 +48,8 @@ export default function PostsPage() {
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
   const [total, setTotal] = useState(0);
+  const [pendingAccounts, setPendingAccounts] = useState<PendingInboxAccount[]>([]);
+  const [pendingLimit, setPendingLimit] = useState(5);
 
   const loadPosts = useCallback(async () => {
     setBusy(true);
@@ -57,6 +60,8 @@ export default function PostsPage() {
       if (!res.ok) throw new Error(data.error || 'Failed to load posts');
       setPosts((data.posts || []) as StudioPost[]);
       setTotal(Number(data.pagination?.total || 0));
+      setPendingAccounts((data.pendingInbox?.accounts || []) as PendingInboxAccount[]);
+      setPendingLimit(Number(data.pendingInbox?.limit || 5));
       setStatus(
         data.posts?.length
           ? `${data.posts.length} recent posts${data.pagination?.total ? ` · ${data.pagination.total} total` : ''}`
@@ -113,11 +118,25 @@ export default function PostsPage() {
         <div>
           <h1 className="font-display text-[28px] font-medium tracking-tight text-text-primary">Posts</h1>
           <p className="mt-1 text-[14px] text-text-secondary">
-            Everything sent via Zernio. If the TikTok notification is missing, hit{' '}
-            <span className="font-medium text-text-primary">Retry inbox</span> — then check Activity → System
-            notifications on the matching account.
+            TikTok accepts these as Creator Inbox uploads. They never appear under Profile → Drafts. Open the
+            TikTok app → Inbox → Activity → System notifications, then publish or discard them. Max {pendingLimit}{' '}
+            unfinished uploads per account per 24 hours.
           </p>
         </div>
+
+        {pendingAccounts.length ? (
+          <div className="rounded-xl border border-border bg-background px-5 py-4">
+            <p className="text-[13px] font-semibold text-text-primary">Unfinished TikTok inbox uploads</p>
+            <ul className="mt-2 space-y-1 text-[13px] text-text-secondary">
+              {pendingAccounts.map((account) => (
+                <li key={account.username || account.titles[0]}>
+                  @{account.username || 'tiktok'}: {account.count}/{pendingLimit}
+                  {account.count >= pendingLimit ? ' — full, new shares will fail until you clear these' : ''}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
 
         {error ? (
           <p className="rounded-xl border border-border bg-background px-5 py-3 text-[14px] text-[#B42318]">

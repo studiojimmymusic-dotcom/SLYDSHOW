@@ -4,13 +4,17 @@ import { randomUUID } from 'crypto';
 import {
   SlideCopy,
   fetchJson,
-  loadConfig,
   log,
   logError,
   requireEnv,
   writeJson,
 } from './utils';
 import { resolvePostAccountId, resolveTikTokPostMode, type TikTokPostMode } from './desk-settings';
+import {
+  TIKTOK_PENDING_INBOX_LIMIT,
+  countPendingInboxShares,
+  pendingInboxCapError,
+} from './zernio-posts';
 
 const ZERNIO_BASE = 'https://zernio.com/api/v1';
 
@@ -41,7 +45,19 @@ function authHeaders(): Record<string, string> {
   };
 }
 
-async function resolvePrivacyLevel(accountId: string, preferred: string): Promise<string> {
+const PUBLIC_PRIVACY = 'PUBLIC_TO_EVERYONE';
+
+function privacyLevelValues(info: {
+  privacyLevels?: Array<string | { value?: string }>;
+  privacy_levels?: Array<string | { value?: string }>;
+}): string[] {
+  const raw = info.privacyLevels || info.privacy_levels || [];
+  return raw
+    .map((item) => (typeof item === 'string' ? item : item?.value || ''))
+    .filter(Boolean);
+}
+
+async function fetchAllowedPrivacyLevels(accountId: string): Promise<string[] | null> {
   try {
     const info = await fetchJson<{
       privacyLevels?: Array<string | { value?: string }>;
@@ -51,17 +67,21 @@ async function resolvePrivacyLevel(accountId: string, preferred: string): Promis
       { method: 'GET', headers: authHeaders() },
       'post-to-tiktok/creator-info'
     );
-    const raw = info.privacyLevels || info.privacy_levels || [];
-    const allowed = raw
-      .map((item) => (typeof item === 'string' ? item : item?.value || ''))
-      .filter(Boolean);
-    if (!allowed.length) return preferred;
-    if (allowed.includes(preferred)) return preferred;
-    if (allowed.includes('PUBLIC_TO_EVERYONE')) return 'PUBLIC_TO_EVERYONE';
-    return allowed[0];
+    return privacyLevelValues(info);
   } catch {
-    return preferred;
+    return null;
   }
+}
+
+/** Live posts must be public. Never silently fall back to Only you / SELF_ONLY. */
+async function resolveLivePrivacyLevel(accountId: string): Promise<string> {
+  const allowed = await fetchAllowedPrivacyLevels(accountId);
+  if (!allowed || !allowed.length || allowed.includes(PUBLIC_PRIVACY)) {
+    return PUBLIC_PRIVACY;
+  }
+  throw new Error(
+    `TikTok is not offering public posting for this account via API (${allowed.join(', ')}). A live share would go out as Only you, so it was blocked. Use Inbox after the pending uploads expire, or post from the TikTok app.`
+  );
 }
 
 async function uploadImageToZernio(filePath: string): Promise<string> {
@@ -135,11 +155,17 @@ export async function postToTikTok(
   accountIdOverride?: string,
   modeOverride?: TikTokPostMode
 ): Promise<Record<string, unknown>> {
-  const config = loadConfig();
   const accountId = resolvePostAccountId(accountIdOverride);
   const mode = resolveTikTokPostMode(modeOverride);
   const zernioOnlyDraft = mode === 'zernio';
   const tiktokInboxDraft = mode === 'inbox';
+
+  if (tiktokInboxDraft) {
+    const pending = await countPendingInboxShares(accountId);
+    if (pending.count >= TIKTOK_PENDING_INBOX_LIMIT) {
+      throw new Error(pendingInboxCapError(pending));
+    }
+  }
 
   const finalSlides: string[] = [];
   for (let i = 1; i <= 12; i++) {
@@ -187,16 +213,31 @@ export async function postToTikTok(
     tiktokSettings = {
       media_type: 'photo',
       photo_cover_index: 0,
+      title,
       description: copy.caption,
       content_preview_confirmed: true,
       express_consent_given: true,
       draft: true,
     };
-  } else {
-    const preferredPrivacy = config.posting.privacyLevel || 'PUBLIC_TO_EVERYONE';
-    privacyLevel = await resolvePrivacyLevel(accountId, preferredPrivacy);
+  } else if (zernioOnlyDraft) {
+    privacyLevel = PUBLIC_PRIVACY;
     tiktokSettings = {
       privacy_level: privacyLevel,
+      allow_comment: true,
+      allow_duet: true,
+      allow_stitch: true,
+      media_type: 'photo',
+      photo_cover_index: 0,
+      description: copy.caption,
+      auto_add_music: false,
+      content_preview_confirmed: true,
+      express_consent_given: true,
+      draft: false,
+    };
+  } else {
+    privacyLevel = await resolveLivePrivacyLevel(accountId);
+    tiktokSettings = {
+      privacy_level: PUBLIC_PRIVACY,
       allow_comment: true,
       allow_duet: true,
       allow_stitch: true,
@@ -275,7 +316,13 @@ export async function postToTikTok(
   writeJson(path.join(postDir, 'post.json'), postRecord);
 
   if (platform?.errorMessage) {
-    throw new Error(`TikTok publish failed: ${platform.errorMessage}`);
+    const message = platform.errorMessage;
+    if (/unaudited|private account|SELF_ONLY|privacy_level/i.test(message)) {
+      throw new Error(
+        `TikTok blocked a public live post: ${message}. The share was not published as Only you.`
+      );
+    }
+    throw new Error(`TikTok publish failed: ${message}`);
   }
 
   if (zernioOnlyDraft) {
