@@ -219,7 +219,9 @@ export async function extractOverlayTextFromSlideImage(
   };
 }
 
-export function hasOverlayCopy(slide: Pick<ExtractedSlideText, 'headline' | 'body' | 'textSource'>): boolean {
+export function hasOverlayCopy(
+  slide: Pick<ExtractedSlideText, 'headline' | 'body'> & { textSource?: SlideTextSource }
+): boolean {
   if (slide.textSource && slide.textSource !== 'overlay') return false;
   return Boolean(String(slide.headline || '').trim() || String(slide.body || '').trim());
 }
