@@ -16,7 +16,6 @@ import {
 } from './utils';
 import { findSlideshowFromSource } from './find-slideshows';
 import { buildSlideImageQueries, fetchImages } from './fetch-images';
-import { postToTikTok } from './post-to-tiktok';
 import { extractOverlayTextFromSlideImage, hasOverlayCopy } from './slide-overlay-text';
 
 async function downloadToFile(url: string, outPath: string): Promise<void> {
@@ -109,8 +108,6 @@ export function appendFelarCta(caption: string): string {
 
 export async function remakeFromTikTokUrl(sourceUrl: string): Promise<string> {
   requireEnv('OPENAI_API_KEY');
-  requireEnv('ZERNIO_API_KEY');
-  // Account comes from desk settings (or ZERNIO_TIKTOK_ACCOUNT_ID fallback)
 
   console.log('FELAR Remake (Pinterest photos only — you add text in TikTok)\n');
 
@@ -190,11 +187,9 @@ export async function remakeFromTikTokUrl(sourceUrl: string): Promise<string> {
   writeJson(path.join(postDir, 'copy.json'), copy);
   writeTextGuide(postDir, copy);
 
-  log('remake', 'Posting photos only (no text overlay)...');
-  await postToTikTok(copy, postDir);
-
   printCopyForTikTok(copy);
-  console.log(`Saved to: ${postDir}`);
+  console.log(`Photos saved to: ${postDir}`);
+  console.log('Copy the caption above and send the photos yourself.');
   return postDir;
 }
 

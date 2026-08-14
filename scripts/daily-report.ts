@@ -1,20 +1,15 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import {
-  fetchJson,
   loadConfig,
   log,
   logError,
   readJson,
-  requireEnv,
   resolvePath,
   writeJson,
 } from './utils';
 
-const ZERNIO_BASE = 'https://zernio.com/api/v1';
-
 interface PostMeta {
-  zernioId?: string;
   caption?: string;
   postedAt?: string;
   status?: string;
@@ -34,25 +29,7 @@ interface AnalyticsMetrics {
   engagementRate?: number;
 }
 
-interface AnalyticsRow {
-  postId?: string;
-  content?: string;
-  publishedAt?: string;
-  scheduledFor?: string;
-  analytics?: AnalyticsMetrics;
-  platformAnalytics?: Array<{
-    platform?: string;
-    analytics?: AnalyticsMetrics;
-  }>;
-}
-
 type Verdict = 'SCALE' | 'FIX_CTA' | 'FIX_HOOK' | 'RESET' | 'NO_DATA';
-
-function authHeaders(): Record<string, string> {
-  return {
-    Authorization: `Bearer ${requireEnv('ZERNIO_API_KEY')}`,
-  };
-}
 
 function listRecentPosts(lookbackDays: number): Array<{ dir: string; meta: PostMeta; copyHook?: string; hookCategory?: string }> {
   const postsRoot = resolvePath('posts');
@@ -86,12 +63,6 @@ function listRecentPosts(lookbackDays: number): Array<{ dir: string; meta: PostM
   return results.sort((a, b) => Date.parse(b.meta.postedAt || '') - Date.parse(a.meta.postedAt || ''));
 }
 
-function pickMetrics(row: AnalyticsRow | null): AnalyticsMetrics {
-  if (!row) return {};
-  const tiktok = row.platformAnalytics?.find((p) => p.platform === 'tiktok')?.analytics;
-  return tiktok || row.analytics || {};
-}
-
 function classify(views: number, engagementRate: number, highViews: number, highEngagement: number): Verdict {
   if (!views && !engagementRate) return 'NO_DATA';
   const highV = views >= highViews;
@@ -117,24 +88,6 @@ function recommendation(verdict: Verdict): string {
   }
 }
 
-async function fetchPostAnalytics(postId: string): Promise<AnalyticsRow | null> {
-  try {
-    const url = new URL(`${ZERNIO_BASE}/analytics`);
-    url.searchParams.set('postId', postId);
-    url.searchParams.set('platform', 'tiktok');
-    const data = await fetchJson<AnalyticsRow | AnalyticsRow[]>(
-      url.toString(),
-      { headers: authHeaders() },
-      'daily-report/analytics'
-    );
-    if (Array.isArray(data)) return data[0] || null;
-    return data;
-  } catch (error) {
-    logError('daily-report', `Analytics for ${postId}: ${error instanceof Error ? error.message : error}`);
-    return null;
-  }
-}
-
 export async function generateDailyReport(): Promise<string> {
   const config = loadConfig();
   const posts = listRecentPosts(config.analytics.lookbackDays);
@@ -152,18 +105,7 @@ export async function generateDailyReport(): Promise<string> {
   const categoryHits: Record<string, number> = {};
 
   for (const post of posts) {
-    const id = post.meta.zernioId;
-    let metrics: AnalyticsMetrics = {};
-    if (id) {
-      const row = await fetchPostAnalytics(id);
-      metrics = pickMetrics(row);
-      if (Object.keys(metrics).length) {
-        writeJson(path.join(post.dir, 'post.json'), {
-          ...post.meta,
-          analytics: metrics,
-        });
-      }
-    }
+    const metrics: AnalyticsMetrics = (post.meta.analytics || {}) as AnalyticsMetrics;
 
     const views = Number(metrics.views || metrics.impressions || 0);
     const likes = Number(metrics.likes || 0);
@@ -197,7 +139,6 @@ export async function generateDailyReport(): Promise<string> {
 
     if (post.copyHook) {
       hookPerf[post.copyHook] = {
-        zernioId: id || null,
         hookCategory: category,
         views,
         likes,
@@ -221,7 +162,7 @@ export async function generateDailyReport(): Promise<string> {
   } else {
     lines.push('- Collect more published post data before deciding');
   }
-  lines.push('- Keep posting as Creator Inbox drafts, then add a trending sound before publish');
+  lines.push('- Save photos from Studio, then post them yourself');
   lines.push('');
 
   const reportPath = resolvePath('data', 'reports', `${today}.md`);

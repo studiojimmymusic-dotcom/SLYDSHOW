@@ -5,7 +5,6 @@ import Link from 'next/link';
 import { DeskShell } from './components/desk-shell';
 import { Button, fieldClassName } from './components/ui';
 import { readNdjsonStream } from './lib/ndjson';
-import { loadLocalDeskSettings } from './lib/desk-settings-client';
 import {
   EditorSlideCopy,
   FELAR_CTA_SLIDE,
@@ -37,8 +36,6 @@ function slideHasOverlayCopy(slide: SlideText): boolean {
 }
 type Photo = { id: string; url: string; thumbUrl: string; description: string; query: string };
 type SlotPhoto = Photo | null;
-type TikTokAccount = { id: string; label: string };
-type ShareMode = 'zernio' | 'inbox' | 'live';
 
 function proxied(url: string): string {
   if (url.startsWith('data:') || url.startsWith('blob:')) return url;
@@ -205,9 +202,6 @@ export default function StudioDeskPage() {
   const [posted, setPosted] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [copied, setCopied] = useState('');
-  const [accounts, setAccounts] = useState<TikTokAccount[]>([]);
-  const [accountId, setAccountId] = useState('');
-  const [shareMode, setShareMode] = useState<ShareMode>('inbox');
   const [logLines, setLogLines] = useState<string[]>([]);
   const [projectId, setProjectId] = useState('');
   const [projectTitle, setProjectTitle] = useState('');
@@ -278,31 +272,6 @@ export default function StudioDeskPage() {
   }
 
   useEffect(() => {
-    const local = loadLocalDeskSettings();
-    if (local?.accounts.length) {
-      setAccounts(local.accounts);
-      setAccountId(local.activeAccountId || local.accounts[0]?.id || '');
-      if (local.tiktokPostMode === 'zernio' || local.tiktokPostMode === 'inbox' || local.tiktokPostMode === 'live') {
-        setShareMode(local.tiktokPostMode);
-      }
-    } else {
-      void (async () => {
-        try {
-          const res = await fetch('/api/settings');
-          const data = await res.json();
-          if (!res.ok) return;
-          const list = (data.accounts || []) as TikTokAccount[];
-          setAccounts(list);
-          setAccountId(data.activeAccountId || list[0]?.id || '');
-          if (data.tiktokPostMode === 'zernio' || data.tiktokPostMode === 'inbox' || data.tiktokPostMode === 'live') {
-            setShareMode(data.tiktokPostMode);
-          }
-        } catch {
-          // keep empty — Share will surface the settings error
-        }
-      })();
-    }
-
     const params = new URLSearchParams(window.location.search);
     const fromUrl = params.get('project') || '';
     const project = fromUrl ? getStudioProject(fromUrl) : null;
@@ -363,8 +332,7 @@ export default function StudioDeskPage() {
   const slots = padSlots(selected, photoSlots);
   const filledSlots = slots.filter(Boolean).length;
 
-  const canShare =
-    photoSlots > 0 && filledSlots === photoSlots && Boolean(slide6DataUrl) && Boolean(accountId);
+  const canSave = photoSlots > 0 && filledSlots === photoSlots;
 
   async function pasteImportUrl() {
     try {
@@ -667,81 +635,93 @@ export default function StudioDeskPage() {
   }
 
   async function copyText(id: string, value: string) {
-    await navigator.clipboard.writeText(value);
-    setCopied(id);
-    window.setTimeout(() => setCopied(''), 1200);
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(id);
+      window.setTimeout(() => setCopied(''), 1200);
+    } catch {
+      pushLog('Could not copy — select the text and copy it manually');
+    }
   }
 
-  async function postDraft() {
-    if (!canShare) {
-      pushLog('Pick photos and upload the app screenshot first');
+  async function savePhotos() {
+    if (!canSave) {
+      pushLog('Pick photos first');
       return;
     }
 
     const imageUrls = slots.map((p) => p!.url);
-    const imageIds = slots.map((p) => p!.id);
-
     const copies = buildEditorCopies(slides);
     const slidesPayload = copies.slice(0, totalSlots).map((c) => ({
       headline: c.headline.trim() || undefined,
       body: c.body,
     }));
-
     const captionPayload = caption.trim();
 
     setBusy(true);
+    setPosted('');
     setLogLines([]);
-
-    const accountLabel = accounts.find((a) => a.id === accountId)?.label || accountId;
-    pushLog(
-      shareMode === 'zernio'
-        ? `Sending to Zernio draft for ${accountLabel}…`
-        : shareMode === 'live'
-          ? `Publishing live to ${accountLabel}…`
-          : `Sending TikTok inbox draft to ${accountLabel}…`
-    );
-    pushLog(`Photos: ${imageIds.map((id) => id.split('/').pop() || id).join(', ')} + last slide upload`);
+    pushLog(`Saving ${imageUrls.length} photo${imageUrls.length === 1 ? '' : 's'}${slide6DataUrl ? ' + last slide' : ''}…`);
 
     try {
-      const res = await fetch('/api/post', {
+      const res = await fetch('/api/export', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           imageUrls,
           slides: slidesPayload,
           caption: captionPayload,
-          lastSlideDataUrl: slide6DataUrl,
-          accountId,
-          mode: shareMode,
+          lastSlideDataUrl: slide6DataUrl || undefined,
         }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Post failed');
-
-      if (Array.isArray(data.sourceKeys) && data.sourceKeys.length) {
-        pushLog(
-          `Uploaded: ${data.sourceKeys.map((k: string) => String(k).split('/').pop()).join(', ')}`
-        );
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(data.error || 'Save failed');
       }
 
-      if (shareMode === 'zernio') {
-        setPosted(`Zernio draft saved for ${accountLabel}${data.zernioId ? ` (${data.zernioId})` : ''}.`);
-        pushLog('Saved as Zernio draft (not sent to TikTok yet).');
-      } else if (shareMode === 'live') {
-        setPosted(`Posted live to @${accountLabel}${data.platformPostUrl ? '. Check the profile feed.' : '.'}`);
-        pushLog(`Live post submitted${data.title ? ` — "${data.title}"` : ''}`);
-        if (data.platformPostUrl) pushLog(data.platformPostUrl);
-        else pushLog('Check the TikTok profile feed. If Share failed, it was blocked rather than posted as Only you.');
-      } else {
-        setPosted(
-          `Sent to @${accountLabel}. Open the TikTok app → Inbox → Activity → System notifications — not Profile Drafts.`
-        );
-        pushLog(`Creator Inbox upload accepted${data.title ? ` — "${data.title}"` : ''}`);
-        pushLog('It will not show under Profile → Drafts. If nothing is there, you likely already have 5 unfinished inbox uploads on that account.');
-        if (data.platformPostId) pushLog(`TikTok publish id: ${data.platformPostId}`);
+      const data = (await res.json()) as {
+        opened?: boolean;
+        imagesDir?: string;
+        files?: Array<{ name: string; dataUrl?: string }>;
+      };
+
+      const photos = (data.files || []).filter(
+        (file) => file.dataUrl && /\.(jpe?g|png|webp)$/i.test(file.name)
+      );
+      if (!data.opened) {
+        for (const file of photos) {
+          const link = document.createElement('a');
+          link.href = file.dataUrl!;
+          link.download = file.name;
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+          await new Promise((resolve) => window.setTimeout(resolve, 200));
+        }
       }
+
+      if (captionPayload) {
+        try {
+          await navigator.clipboard.writeText(captionPayload);
+          setCopied('caption');
+          window.setTimeout(() => setCopied(''), 2000);
+        } catch {
+          // clipboard is optional
+        }
+      }
+
+      setPosted(
+        captionPayload
+          ? 'Photos saved as images. Caption copied — paste it in WhatsApp with the photos.'
+          : 'Photos saved as images. Copy the caption, then send everything to WhatsApp.'
+      );
+      pushLog(
+        data.opened && data.imagesDir
+          ? `Folder opened with ${photos.length} photos. Send them to WhatsApp, then paste the caption.`
+          : `${photos.length} photos saved to Downloads. Send them to WhatsApp, then paste the caption.`
+      );
     } catch (error) {
-      pushLog(error instanceof Error ? error.message : 'Post failed');
+      pushLog(error instanceof Error ? error.message : 'Save failed');
     } finally {
       setBusy(false);
     }
@@ -759,31 +739,16 @@ export default function StudioDeskPage() {
       headerLeft={status || 'Paste a TikTok photo URL to start'}
       headerRight={
         <>
-          {accounts.length > 0 ? (
-            <select
-              value={accountId}
-              onChange={(e) => setAccountId(e.target.value)}
-              className={`${fieldClassName} max-w-[180px]`}
-            >
-              {accounts.map((account) => (
-                <option key={account.id} value={account.id}>
-                  {account.label}
-                </option>
-              ))}
-            </select>
-          ) : null}
-          <select
-            value={shareMode}
-            onChange={(e) => setShareMode(e.target.value as ShareMode)}
-            className={`${fieldClassName} max-w-[180px]`}
-            aria-label="Share destination"
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => void copyText('caption', caption)}
+            disabled={!caption.trim()}
           >
-            <option value="zernio">Zernio draft</option>
-            <option value="inbox">TikTok inbox</option>
-            <option value="live">TikTok live</option>
-          </select>
-          <Button type="button" onClick={() => void postDraft()} disabled={busy || !canShare}>
-            Share
+            {copied === 'caption' ? 'Copied' : 'Copy caption'}
+          </Button>
+          <Button type="button" onClick={() => void savePhotos()} disabled={busy || !canSave}>
+            Save photos
           </Button>
         </>
       }
@@ -817,10 +782,7 @@ export default function StudioDeskPage() {
             <div>
               <h1 className="font-display text-[28px] font-medium tracking-tight text-text-primary">Studio</h1>
               <p className="mt-1 text-[14px] text-text-secondary">
-                Pick photos, upload your app screenshot as the last slide, then Share.
-                {shareMode === 'live'
-                  ? ' Live posts go straight to the TikTok profile — add text in the caption before you share.'
-                  : ' Add the text in TikTok.'}
+                Pick photos, save them, copy the caption, then send both to WhatsApp and post yourself.
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">

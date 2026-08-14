@@ -1,6 +1,6 @@
 # SLYDSHOW
 
-TikTok photo-carousel remake desk for FELAR. Paste a viral slideshow URL, pick studio photos, copy slide text, then share as a Zernio draft or TikTok Creator Inbox post.
+TikTok photo-carousel remake desk for FELAR. Paste a viral slideshow URL, pick studio photos, copy slide text, then save the photos and post them yourself.
 
 ## Setup
 
@@ -15,8 +15,6 @@ Fill `.env`:
 RAPIDAPI_KEY=
 OPENAI_API_KEY=
 GEMINI_API_KEY=
-ZERNIO_API_KEY=
-ZERNIO_TIKTOK_ACCOUNT_ID=
 ```
 
 ## Run Desk
@@ -27,15 +25,11 @@ npm run dev
 
 Open [http://localhost:3007](http://localhost:3007).
 
+Pick photos, click **Save photos**, copy the caption, then send both to WhatsApp and post from your phone.
+
 ## CLI
 
 ```bash
 npm run remake -- --source "https://www.tiktok.com/@user/photo/123"
 npm run pipeline
 ```
-
-## Share destinations
-
-- **Zernio draft** — stays in Zernio until you publish
-- **TikTok inbox** — Creator Inbox so you can add text + music in TikTok
-- **Save for TikTok** — export images locally for manual upload

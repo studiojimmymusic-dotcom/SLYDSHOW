@@ -4,7 +4,6 @@ import { remakeFromTikTokUrl } from './remake';
 import { analyzeSlideshow } from './analyze-slideshow';
 import { fetchImages } from './fetch-images';
 import { generateCopy } from './generate-copy';
-import { postToTikTok } from './post-to-tiktok';
 import {
   ensureDir,
   log,
@@ -92,19 +91,8 @@ async function runPipeline(): Promise<void> {
     return;
   }
 
-  log('pipeline', 'Step 5/5: Posting photos only (add text in TikTok)...');
-  try {
-    await postToTikTok(copy, postDir);
-  } catch (error) {
-    logError('pipeline', error);
-    console.log('Posting failed. Photos are still available locally.');
-    console.log(`Folder: ${postDir}`);
-    printPipelineCopy(copy);
-    return;
-  }
-
-  console.log('\nPipeline complete!');
-  console.log(`Post saved to: ${postDir}`);
+  console.log('\nPipeline complete — photos saved locally (no auto-post).');
+  console.log(`Folder: ${postDir}`);
   printPipelineCopy(copy);
 }
 
